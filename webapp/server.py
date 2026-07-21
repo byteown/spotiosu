@@ -120,18 +120,22 @@ def _top_mappers(liked: list[dict], limit: int = 6) -> list[dict]:
 
 
 def _skill_vs_taste(profile, liked: list[dict]) -> dict:
-    """Where their taste sits relative to what they can actually play."""
+    """Where their taste sits relative to what they can actually play.
+
+    Returns a verdict *key* rather than a sentence - the client owns the wording
+    so the page can be shown in any language.
+    """
     taste = _avg([r.get("stars") for r in liked])
     skill = float(profile.target_stars)
     delta = taste - skill
     if not liked:
         verdict = ""
     elif delta < -0.4:
-        verdict = "easier than your top plays"
+        verdict = "easier"
     elif delta > 0.4:
-        verdict = "harder than your top plays"
+        verdict = "harder"
     else:
-        verdict = "right at your top-play level"
+        verdict = "onpar"
     return {"skill_stars": round(skill, 2), "taste_stars": round(taste, 2),
             "delta": round(delta, 2), "verdict": verdict}
 
@@ -157,10 +161,10 @@ def _recent_likes(liked: list[dict], limit: int = 8) -> list[dict]:
     return out
 
 
-def _taste_sentence(liked: list[dict], profile) -> str:
-    """One human-readable line describing the taste we have learned."""
+def _taste_summary(liked: list[dict], profile) -> dict | None:
+    """The parts of the "your taste" line, for the client to phrase and translate."""
     if len(liked) < 3:
-        return ""
+        return None
     bpm = _avg([r.get("bpm") for r in liked])
     stars = _avg([r.get("stars") for r in liked])
     genre_counts: dict[int, int] = {}
@@ -168,19 +172,17 @@ def _taste_sentence(liked: list[dict], profile) -> str:
         gid = r.get("genre_id")
         if gid:
             genre_counts[int(gid)] = genre_counts.get(int(gid), 0) + 1
-    top_genre = ""
-    if genre_counts:
-        top_genre = genre_name(max(genre_counts, key=genre_counts.get)) or ""
+    top_genre_id = max(genre_counts, key=genre_counts.get) if genre_counts else 0
 
-    tempo = ("chill" if bpm < 140 else "mid-tempo" if bpm < 170
+    tempo = ("chill" if bpm < 140 else "mid" if bpm < 170
              else "fast" if bpm < 200 else "breakneck")
-    subject = f"{top_genre} maps" if top_genre else "maps"
-    bits = f"{tempo.capitalize()} {subject}"
-    if stars:
-        bits += f" around {stars:.1f}★"
-    if bpm:
-        bits += f" at {bpm:.0f} BPM"
-    return bits
+    return {
+        "tempo": tempo,
+        "genre_id": top_genre_id,
+        "genre_name": genre_name(top_genre_id) or "",
+        "stars": round(stars, 1),
+        "bpm": round(bpm),
+    }
 
 
 def create_app(config: Config) -> FastAPI:
@@ -390,7 +392,7 @@ def create_app(config: Config) -> FastAPI:
             "mappers": _top_mappers(liked),
             "skill_vs_taste": _skill_vs_taste(profile, liked),
             "recent_likes": _recent_likes(liked),
-            "summary": _taste_sentence(liked, profile),
+            "summary": _taste_summary(liked, profile),
         }
 
     @app.post("/api/reset")

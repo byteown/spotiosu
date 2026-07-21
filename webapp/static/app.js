@@ -21,6 +21,7 @@ const S = {
 
 // ============================ boot ============================
 async function init() {
+  applyLang(detectLang());
   showLoginError();
   let state;
   try {
@@ -50,16 +51,32 @@ async function init() {
 function showLoginError() {
   const err = new URLSearchParams(location.search).get("error");
   if (!err) return;
-  const map = {
-    denied: "Sign-in was cancelled.",
-    state: "Session expired, please try again.",
-    oauth: "Could not complete osu! sign-in. Check the app's callback URL.",
-  };
+  const key = { denied: "err_denied", state: "err_state", oauth: "err_oauth" }[err];
   const el = $("login-error");
-  el.textContent = map[err] || "Sign-in failed.";
+  el.textContent = t(key || "err_generic");
   el.classList.remove("hidden");
   history.replaceState({}, "", "/");
 }
+
+// Switching language re-renders the static labels, then whatever the current
+// view drew dynamically (genre chips, track badges, charts).
+function switchLang() {
+  applyLang(LANG === "ru" ? "en" : "ru");
+  updateRangeLabel();
+  if (!$("genres-view").classList.contains("hidden")) {
+    const chosen = new Set(S.picked);
+    showGenrePicker();
+    S.picked = chosen;
+    document.querySelectorAll(".genre-chip").forEach((b) => {
+      if (chosen.has(Number(b.dataset.id))) b.classList.add("on");
+    });
+    $("genres-continue").disabled = chosen.size < 2;
+  }
+  if (!$("profile-view").classList.contains("hidden")) showProfile();
+  else if (current()) render();
+}
+
+document.querySelectorAll(".lang-btn").forEach((b) => (b.onclick = switchLang));
 
 function renderProfileHeader() {
   const u = S.user;
@@ -92,7 +109,8 @@ function showGenrePicker() {
   for (const g of S.allGenres) {
     const b = document.createElement("button");
     b.className = "genre-chip";
-    b.textContent = g.name;
+    b.dataset.id = g.id;
+    b.textContent = genreLabel(g.id, g.name);
     b.onclick = () => {
       if (S.picked.has(g.id)) { S.picked.delete(g.id); b.classList.remove("on"); }
       else { S.picked.add(g.id); b.classList.add("on"); }
@@ -105,13 +123,13 @@ function showGenrePicker() {
 $("genres-continue").onclick = async () => {
   const btn = $("genres-continue");
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Loading songs…';
+  btn.innerHTML = `<span class="spinner"></span> ${t("loading_songs")}`;
   const res = await fetch("/api/onboarding/genres", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ genres: [...S.picked] }),
   });
-  btn.textContent = "Continue";
+  btn.textContent = t("continue");
   if (!res.ok) { btn.disabled = false; return; }
   startOnboardingRating();
 };
@@ -189,15 +207,17 @@ function applySuggested(sug) {
 
 async function loadQueue() {
   showLoading(true);
-  let items = [];
+  let items = [], failed = false;
   try {
     items = S.pending ? await S.pending : await fetchBatch();
-  } catch (_) { items = []; }
+  } catch (_) { failed = true; }
   S.pending = null;
   S.queue = items;
   S.idx = 0;
   showLoading(false);
-  if (!items.length) showEmpty();
+  // A network failure is not the same as "nothing matched your filters".
+  if (failed) showEmpty(t("load_error"));
+  else if (!items.length) showEmpty();
 }
 
 function maybePrefetch() {
@@ -213,12 +233,10 @@ function showLoading(on) {
   if (on) { $("stage").classList.add("hidden"); $("stage-empty").classList.add("hidden"); }
 }
 
-function showEmpty() {
+function showEmpty(msg) {
   $("stage").classList.add("hidden");
   const el = $("stage-empty");
-  el.textContent = S.onboarding
-    ? "Couldn't load songs for those genres. Try picking different ones."
-    : "No fresh maps match these filters. Widen the difficulty range or reset history.";
+  el.textContent = msg || (S.onboarding ? t("empty_onboarding") : t("empty_feed"));
   el.classList.remove("hidden");
 }
 
@@ -297,7 +315,10 @@ function loadPreview(rec) {
 }
 
 function currentVolume() { return ($("vol").value || 0) / 100; }
-function setPlayIcon(playing) { $("btn-play").textContent = playing ? "⏸" : "▶"; }
+function setPlayIcon(playing) {
+  $("icon-play").classList.toggle("hidden", playing);
+  $("icon-pause").classList.toggle("hidden", !playing);
+}
 function fmtTime(s) {
   if (!isFinite(s)) return "0:00";
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -401,7 +422,7 @@ document.addEventListener("keydown", (e) => {
 // ============================ filters ============================
 function updateRangeLabel() {
   $("range-label").textContent = S.filters.auto
-    ? "auto" : `★ ${(+S.filters.min).toFixed(1)} – ${(+S.filters.max).toFixed(1)}`;
+    ? t("f_auto_value") : `★ ${(+S.filters.min).toFixed(1)} – ${(+S.filters.max).toFixed(1)}`;
 }
 
 function readSliders() {
@@ -435,7 +456,7 @@ $("reset-history").onclick = async () => {
   render();
 };
 $("reonboard").onclick = async () => {
-  if (!confirm("Retake the taste quiz? This clears your genres and ratings.")) return;
+  if (!confirm(t("retake_confirm"))) return;
   await fetch("/api/reonboard", { method: "POST" });
   location.reload();
 };
@@ -477,10 +498,13 @@ function renderProfile(d) {
   $("t-rate").textContent = (t.like_rate ?? 0) + "%";
   $("t-bpm").textContent = t.avg_bpm || "—";
 
-  $("taste-line").textContent = d.summary || "Not enough ratings yet";
+  $("taste-line").textContent = tasteLine(d.summary);
   const svt = d.skill_vs_taste || {};
   $("taste-sub").textContent = svt.verdict
-    ? `Top plays ~${svt.skill_stars}★ · you pick ~${svt.taste_stars}★ — ${svt.verdict}.`
+    ? t("taste_sub", {
+        skill: svt.skill_stars, taste: svt.taste_stars,
+        verdict: t("verdict_" + svt.verdict),
+      })
     : "";
 
   const empty = !t.rated;
@@ -491,11 +515,23 @@ function renderProfile(d) {
   renderGenreChart(d.genres || []);
   renderBarChart($("diff-chart"), (d.difficulty || []).map((b) => ({
     label: b.star.toFixed(1) + "★", value: b.count,
-  })), "liked maps");
+  })), t("unit_liked_maps"));
   renderBarChart($("mapper-chart"), (d.mappers || []).map((m) => ({
     label: m.name, value: m.count,
-  })), "liked maps");
+  })), t("unit_liked_maps"));
   renderRecent(d.recent_likes || []);
+}
+
+// The server sends the pieces, not a sentence, so each language can phrase it
+// with its own word order.
+function tasteLine(s) {
+  if (!s) return t("taste_none");
+  return t("taste_line", {
+    tempo: t("tempo_" + s.tempo),
+    genre: s.genre_id ? genreLabel(s.genre_id, s.genre_name) : t("taste_maps"),
+    stars: Number(s.stars).toFixed(1),
+    bpm: s.bpm,
+  });
 }
 
 // Bar width: a zero value gets no sliver, everything else stays visible.
@@ -507,19 +543,23 @@ function barWidth(value, max) {
 function renderGenreChart(genres) {
   const el = $("genre-chart");
   el.innerHTML = "";
-  if (!genres.length) { el.innerHTML = '<p class="chart-note">No genre data yet.</p>'; return; }
+  if (!genres.length) {
+    el.innerHTML = `<p class="chart-note">${t("no_genre_data")}</p>`;
+    return;
+  }
   const max = Math.max(...genres.flatMap((g) => [g.liked, g.disliked]), 1);
   for (const g of genres) {
+    const label = genreLabel(g.id, g.name);
     const row = document.createElement("div");
     row.className = "drow";
     row.innerHTML =
-      `<div class="row-label" title="${esc(g.name)}">${esc(g.name)}</div>` +
+      `<div class="row-label" title="${esc(label)}">${esc(label)}</div>` +
       `<div class="dtrack">` +
         `<div class="dside left"><div class="dbar neg" style="${barWidth(g.disliked, max)}" ` +
-          `title="${g.disliked} disliked"></div></div>` +
+          `title="${g.disliked} ${esc(t("unit_disliked"))}"></div></div>` +
         `<div class="dzero"></div>` +
         `<div class="dside"><div class="dbar pos" style="${barWidth(g.liked, max)}" ` +
-          `title="${g.liked} liked"></div></div>` +
+          `title="${g.liked} ${esc(t("unit_liked"))}"></div></div>` +
       `</div>` +
       `<div class="row-value">${g.liked} / ${g.disliked}</div>`;
     el.appendChild(row);
@@ -528,7 +568,7 @@ function renderGenreChart(genres) {
 
 function renderBarChart(el, items, unit) {
   el.innerHTML = "";
-  if (!items.length) { el.innerHTML = '<p class="chart-note">Nothing here yet.</p>'; return; }
+  if (!items.length) { el.innerHTML = `<p class="chart-note">${t("nothing_yet")}</p>`; return; }
   const max = Math.max(...items.map((i) => i.value), 1);
   for (const it of items) {
     const row = document.createElement("div");
@@ -546,7 +586,7 @@ function renderRecent(items) {
   const el = $("recent-likes");
   el.innerHTML = "";
   if (!items.length) {
-    el.innerHTML = '<p class="chart-note">Your next likes will show up here.</p>';
+    el.innerHTML = `<p class="chart-note">${t("recent_empty")}</p>`;
     return;
   }
   for (const it of items) {
