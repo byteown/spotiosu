@@ -127,15 +127,31 @@ sudo systemctl restart spotiosu
 git revert <bad commit> && git push     # rollback = ship the previous code
 ```
 
-**Back up the database**
+**Backups** — a systemd timer dumps the database daily to `/var/backups/spotiosu`
+and keeps 14 days. Each dump is verified (gzip integrity + the trailer PostgreSQL
+writes on a complete dump) *before* rotation removes older copies, so a truncated
+dump can never evict a good one.
+
 ```bash
-sudo -u postgres pg_dump spotiosu | gzip > ~/backup-$(date +%F).sql.gz
+systemctl list-timers spotiosu-backup      # when it next runs
+sudo systemctl start spotiosu-backup       # run one now
+journalctl -u spotiosu-backup -n 20        # results
+ls -lh /var/backups/spotiosu
 ```
 
 **Restore**
 ```bash
-gunzip -c backup-2026-07-21.sql.gz | sudo -u postgres psql -d spotiosu
+gunzip -c /var/backups/spotiosu/spotiosu-2026-07-21_0300.sql.gz \
+  | sudo -u postgres psql -d spotiosu
 ```
+
+> The dumps live on the same server as the database. That protects against a bad
+> deploy or a bad migration, **not** against losing the server. Copy them off the
+> box periodically if the data matters:
+> `scp deploy@<server>:/var/backups/spotiosu/*.sql.gz ./`
+
+**Donation button** — set `SPOTIOSU_DONATE_URL` in `/opt/spotiosu/.env` and restart.
+Empty means no button at all.
 
 ## Notes
 

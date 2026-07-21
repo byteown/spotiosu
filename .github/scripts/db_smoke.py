@@ -47,7 +47,8 @@ async def main() -> int:
     print("ratings")
     await store.add_rating(USER, {"set_id": 111, "beatmap_id": 222, "genre_id": 10,
                                   "stars": 4.5, "bpm": 175.0, "creator": "Mapper",
-                                  "liked": True})
+                                  "liked": True, "title": "Sőng Tïtle",
+                                  "artist": "Artist", "cover_url": "https://x/c.jpg"})
     await store.add_rating(USER, {"set_id": 112, "beatmap_id": 223, "genre_id": 3,
                                   "stars": 3.1, "bpm": 140.0, "creator": "Other",
                                   "liked": False})
@@ -58,6 +59,12 @@ async def main() -> int:
     check("liked flag", first["liked"] is True)
     check("stars survived", abs(float(first["stars"]) - 4.5) < 0.01, str(first["stars"]))
     check("creator survived", first["creator"] == "Mapper")
+    # Columns added later via ALTER TABLE ... IF NOT EXISTS - this proves the
+    # migration ran and the profile page will have artwork to show.
+    check("artwork columns exist", "cover_url" in first, str(sorted(first)))
+    check("title round-trips (unicode)", first.get("title") == "Sőng Tïtle",
+          str(first.get("title")))
+    check("cover_url round-trips", first.get("cover_url") == "https://x/c.jpg")
 
     # Re-rating the same beatmapset must replace, not duplicate.
     await store.add_rating(USER, {"set_id": 111, "genre_id": 10, "stars": 4.5,

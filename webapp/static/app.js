@@ -34,7 +34,8 @@ async function init() {
   S.allGenres = state.all_genres || [];
   S.target = state.onboarding_target || 10;
   S.rated = state.rated_count || 0;
-  renderProfile();
+  renderProfileHeader();
+  applyDonateLink(state.donate_url);
   $("shell").classList.remove("hidden");
 
   if (state.onboarded) {
@@ -60,7 +61,7 @@ function showLoginError() {
   history.replaceState({}, "", "/");
 }
 
-function renderProfile() {
+function renderProfileHeader() {
   const u = S.user;
   $("avatar").src = u.avatar_url || "";
   $("username").textContent = u.username;
@@ -71,9 +72,20 @@ function renderProfile() {
   $("stats").textContent = bits.join(" · ");
 }
 
+// The donate button only exists when a link is configured server-side, so the
+// payment platform can be swapped without touching the code.
+function applyDonateLink(url) {
+  if (!url) return;
+  const el = $("donate");
+  el.href = url;
+  el.classList.remove("hidden");
+}
+
 // ============================ step 1: genres ============================
 function showGenrePicker() {
   $("stage-view").classList.add("hidden");
+  $("profile-view").classList.add("hidden");
+  $("nav").classList.add("hidden");
   $("genres-view").classList.remove("hidden");
   const grid = $("genre-grid");
   grid.innerHTML = "";
@@ -109,6 +121,8 @@ async function startOnboardingRating() {
   S.onboarding = true;
   S.queue = []; S.idx = 0; S.pending = null;
   $("genres-view").classList.add("hidden");
+  $("profile-view").classList.add("hidden");
+  $("nav").classList.add("hidden");   // no wandering off mid-questionnaire
   $("stage-view").classList.remove("hidden");
   $("onboard-bar").classList.remove("hidden");
   $("filters").classList.add("hidden");
@@ -133,6 +147,8 @@ async function startMain() {
   S.onboarding = false;
   S.queue = []; S.idx = 0; S.pending = null;
   $("genres-view").classList.add("hidden");
+  $("profile-view").classList.add("hidden");
+  $("nav").classList.remove("hidden");
   $("stage-view").classList.remove("hidden");
   $("onboard-bar").classList.add("hidden");
   $("filters").classList.remove("hidden");
@@ -345,6 +361,7 @@ async function rate(action) {
         set_id: rec.set_id, beatmap_id: rec.beatmap_id,
         genre_id: rec.genre_id, stars: rec.stars,
         bpm: rec.bpm, creator: rec.creator,
+        title: rec.title, artist: rec.artist, cover_url: rec.cover_url,
       }),
     });
     if (res.ok) {
@@ -426,6 +443,126 @@ $("logout").onclick = async () => {
   await fetch("/logout", { method: "POST" });
   location.reload();
 };
+
+// ============================ profile ============================
+function showPlayer() {
+  $("nav-player").classList.add("on");
+  $("nav-profile").classList.remove("on");
+  $("profile-view").classList.add("hidden");
+  $("stage-view").classList.remove("hidden");
+}
+
+async function showProfile() {
+  audio().pause();
+  setPlayIcon(false);
+  $("nav-profile").classList.add("on");
+  $("nav-player").classList.remove("on");
+  $("stage-view").classList.add("hidden");
+  $("genres-view").classList.add("hidden");
+  $("profile-view").classList.remove("hidden");
+
+  let data;
+  try {
+    const res = await fetch("/api/profile/stats");
+    if (res.status === 401) { location.reload(); return; }
+    data = await res.json();
+  } catch (_) { return; }
+  renderProfile(data);
+}
+
+function renderProfile(d) {
+  const t = d.totals || {};
+  $("t-rated").textContent = t.rated ?? 0;
+  $("t-liked").textContent = t.liked ?? 0;
+  $("t-rate").textContent = (t.like_rate ?? 0) + "%";
+  $("t-bpm").textContent = t.avg_bpm || "—";
+
+  $("taste-line").textContent = d.summary || "Not enough ratings yet";
+  const svt = d.skill_vs_taste || {};
+  $("taste-sub").textContent = svt.verdict
+    ? `Top plays ~${svt.skill_stars}★ · you pick ~${svt.taste_stars}★ — ${svt.verdict}.`
+    : "";
+
+  const empty = !t.rated;
+  $("profile-empty").classList.toggle("hidden", !empty);
+  document.querySelectorAll(".chart-card").forEach((c) => c.classList.toggle("hidden", empty));
+  if (empty) return;
+
+  renderGenreChart(d.genres || []);
+  renderBarChart($("diff-chart"), (d.difficulty || []).map((b) => ({
+    label: b.star.toFixed(1) + "★", value: b.count,
+  })), "liked maps");
+  renderBarChart($("mapper-chart"), (d.mappers || []).map((m) => ({
+    label: m.name, value: m.count,
+  })), "liked maps");
+  renderRecent(d.recent_likes || []);
+}
+
+// Bar width: a zero value gets no sliver, everything else stays visible.
+function barWidth(value, max) {
+  if (!value) return "width:0;min-width:0";
+  return `width:${Math.max(2, (value / max) * 100)}%`;
+}
+
+function renderGenreChart(genres) {
+  const el = $("genre-chart");
+  el.innerHTML = "";
+  if (!genres.length) { el.innerHTML = '<p class="chart-note">No genre data yet.</p>'; return; }
+  const max = Math.max(...genres.flatMap((g) => [g.liked, g.disliked]), 1);
+  for (const g of genres) {
+    const row = document.createElement("div");
+    row.className = "drow";
+    row.innerHTML =
+      `<div class="row-label" title="${esc(g.name)}">${esc(g.name)}</div>` +
+      `<div class="dtrack">` +
+        `<div class="dside left"><div class="dbar neg" style="${barWidth(g.disliked, max)}" ` +
+          `title="${g.disliked} disliked"></div></div>` +
+        `<div class="dzero"></div>` +
+        `<div class="dside"><div class="dbar pos" style="${barWidth(g.liked, max)}" ` +
+          `title="${g.liked} liked"></div></div>` +
+      `</div>` +
+      `<div class="row-value">${g.liked} / ${g.disliked}</div>`;
+    el.appendChild(row);
+  }
+}
+
+function renderBarChart(el, items, unit) {
+  el.innerHTML = "";
+  if (!items.length) { el.innerHTML = '<p class="chart-note">Nothing here yet.</p>'; return; }
+  const max = Math.max(...items.map((i) => i.value), 1);
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<div class="row-label" title="${esc(it.label)}">${esc(it.label)}</div>` +
+      `<div class="row-track"><div class="row-bar" style="${barWidth(it.value, max)}" ` +
+        `title="${it.value} ${unit}"></div></div>` +
+      `<div class="row-value">${it.value}</div>`;
+    el.appendChild(row);
+  }
+}
+
+function renderRecent(items) {
+  const el = $("recent-likes");
+  el.innerHTML = "";
+  if (!items.length) {
+    el.innerHTML = '<p class="chart-note">Your next likes will show up here.</p>';
+    return;
+  }
+  for (const it of items) {
+    const a = document.createElement("a");
+    a.className = "recent-item";
+    a.href = it.url; a.target = "_blank"; a.rel = "noopener";
+    a.innerHTML =
+      `<img loading="lazy" src="${esc(it.cover_url)}" alt="" />` +
+      `<div class="recent-title" title="${esc(it.artist)} - ${esc(it.title)}">${esc(it.title)}</div>` +
+      `<div class="recent-sub">${esc(it.artist)} · ★${it.stars.toFixed(2)}</div>`;
+    el.appendChild(a);
+  }
+}
+
+$("nav-player").onclick = showPlayer;
+$("nav-profile").onclick = showProfile;
 
 // ============================ misc ============================
 function esc(s) {

@@ -1,0 +1,13 @@
+[Unit]
+Description=spotiosu database backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/spotiosu-backup.sh
+# Keep the last 14 daily dumps in /var/backups/spotiosu
+Environment=KEEP_DAYS=14
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=spotiosu-backup

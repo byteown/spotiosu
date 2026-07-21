@@ -195,6 +195,124 @@ button { font-family: inherit; cursor: pointer; border: none; }
 
 .stage-msg { padding: 100px 24px; text-align: center; color: var(--muted); font-size: 15px; }
 
+/* ================= Profile ================= */
+/* Data colours are their own roles - deliberately NOT the brand pink, which is
+   too light for a mark on this surface and too close to the negative red.
+   Validated against surface #16161d: CVD dE 19.2, normal-vision 29.0, >=3:1. */
+.profile-page {
+  --viz-pos: #3987e5;     /* liked / magnitude */
+  --viz-neg: #e66767;     /* disliked */
+  --viz-axis: #383835;
+  --viz-grid: #2c2c2a;
+  --viz-ink: #898781;
+  max-width: 860px; margin: 0 auto; padding: 28px 24px 90px;
+}
+
+.taste-hero {
+  background: linear-gradient(160deg, #2a1a26, var(--bg-2));
+  border: 1px solid #2a2a35; border-radius: 18px;
+  padding: 30px 28px; margin-bottom: 20px;
+}
+.hero-label {
+  color: var(--accent); font-size: 11px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 10px;
+}
+.hero-line { font-size: 27px; font-weight: 800; letter-spacing: -.5px; line-height: 1.25; }
+.hero-sub { color: var(--muted); font-size: 14px; margin-top: 10px; }
+
+.tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px; margin-bottom: 20px;
+}
+.tile {
+  background: var(--bg-2); border: 1px solid #23232e;
+  border-radius: 14px; padding: 18px;
+}
+.tile-value { font-size: 28px; font-weight: 800; letter-spacing: -.5px; }
+.tile-label {
+  color: var(--muted); font-size: 12px; margin-top: 4px;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+
+.chart-card {
+  background: var(--bg-2); border: 1px solid #23232e;
+  border-radius: 14px; padding: 22px; margin: 0 0 16px;
+}
+.chart-title { font-size: 16px; font-weight: 700; }
+.chart-note { color: var(--muted); font-size: 13px; margin: 4px 0 14px; }
+
+.legend { display: flex; gap: 16px; margin-bottom: 14px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.swatch.pos { background: var(--viz-pos); }
+.swatch.neg { background: var(--viz-neg); }
+
+.chart { display: flex; flex-direction: column; gap: 8px; }
+
+/* --- single-series horizontal bars --- */
+.row { display: grid; grid-template-columns: 92px 1fr 46px; gap: 12px; align-items: center; }
+.row-label {
+  font-size: 13px; color: #d5d5e0; text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row-track { background: var(--viz-grid); border-radius: 4px; height: 14px; }
+.row-bar {
+  height: 14px; background: var(--viz-pos);
+  border-radius: 0 4px 4px 0;   /* rounded at the data end only */
+  min-width: 3px; transition: width .35s ease;
+}
+.row-value {
+  font-size: 12px; color: var(--viz-ink); font-variant-numeric: tabular-nums;
+}
+
+/* --- diverging bars (liked vs disliked around a zero line) --- */
+.drow { display: grid; grid-template-columns: 92px 1fr 74px; gap: 12px; align-items: center; }
+.dtrack { display: flex; align-items: center; }
+.dside { display: flex; height: 14px; flex: 1; }
+.dside.left { justify-content: flex-end; }
+.dzero { width: 2px; height: 20px; background: var(--viz-axis); flex: none; }
+.dbar { height: 14px; min-width: 3px; transition: width .35s ease; }
+.dbar.neg { background: var(--viz-neg); border-radius: 4px 0 0 4px; }
+.dbar.pos { background: var(--viz-pos); border-radius: 0 4px 4px 0; }
+.row:hover .row-bar, .drow:hover .dbar { filter: brightness(1.15); }
+
+/* --- recently liked --- */
+.recent-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px;
+}
+.recent-item { text-decoration: none; color: inherit; }
+.recent-item img {
+  width: 100%; aspect-ratio: 4/3; object-fit: cover;
+  border-radius: 10px; background: var(--bg-3); display: block;
+}
+.recent-title {
+  font-size: 12px; font-weight: 600; margin-top: 7px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.recent-sub { font-size: 11px; color: var(--muted); }
+.recent-item:hover .recent-title { color: var(--accent-2); }
+
+/* --- nav + donate --- */
+.nav { display: flex; gap: 6px; margin-left: auto; margin-right: 16px; }
+.nav-btn {
+  background: transparent; color: var(--muted); border: 1px solid transparent;
+  padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600;
+}
+.nav-btn:hover { color: var(--text); }
+.nav-btn.on { background: var(--bg-3); color: var(--text); border-color: #2c2c38; }
+.btn-donate {
+  background: transparent; color: var(--accent); border: 1px solid var(--accent);
+  padding: 8px 15px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  text-decoration: none; white-space: nowrap; transition: background .2s, color .2s;
+}
+.btn-donate:hover { background: var(--accent); color: #1a0f16; }
+
+@media (max-width: 700px) {
+  .nav { margin-right: 8px; }
+  .row, .drow { grid-template-columns: 74px 1fr 44px; }
+  .hero-line { font-size: 21px; }
+}
+
 .spinner {
   display: inline-block; width: 16px; height: 16px; vertical-align: -3px;
   border: 2px solid rgba(255,255,255,.25); border-top-color: var(--accent);

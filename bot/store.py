@@ -89,8 +89,9 @@ class Store:
                 await conn.execute(
                     """
                     INSERT INTO ratings
-                        (username, set_id, beatmap_id, genre_id, stars, bpm, creator, liked)
-                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                        (username, set_id, beatmap_id, genre_id, stars, bpm, creator,
+                         liked, title, artist, cover_url)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
                     ON CONFLICT (username, set_id) DO UPDATE SET
                         beatmap_id = EXCLUDED.beatmap_id,
                         genre_id   = EXCLUDED.genre_id,
@@ -98,6 +99,9 @@ class Store:
                         bpm        = EXCLUDED.bpm,
                         creator    = EXCLUDED.creator,
                         liked      = EXCLUDED.liked,
+                        title      = EXCLUDED.title,
+                        artist     = EXCLUDED.artist,
+                        cover_url  = EXCLUDED.cover_url,
                         rated_at   = now()
                     """,
                     key, int(rating.get("set_id") or 0),
@@ -107,6 +111,9 @@ class Store:
                     float(rating.get("bpm") or 0),
                     (rating.get("creator") or "").strip() or None,
                     bool(rating.get("liked")),
+                    (rating.get("title") or "").strip() or None,
+                    (rating.get("artist") or "").strip() or None,
+                    (rating.get("cover_url") or "").strip() or None,
                 )
                 await conn.execute(
                     """
@@ -120,7 +127,8 @@ class Store:
     async def get_ratings(self, username: str) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT set_id, beatmap_id, genre_id, stars, bpm, creator, liked"
+                "SELECT set_id, beatmap_id, genre_id, stars, bpm, creator, liked,"
+                " title, artist, cover_url, rated_at"
                 " FROM ratings WHERE username = $1 ORDER BY rated_at",
                 self._key(username),
             )

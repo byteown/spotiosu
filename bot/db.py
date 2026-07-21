@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS likes (
     weight   REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (username, key)
 );
+
+-- Added later for the profile page: lets it show recently liked maps with their
+-- artwork without calling the osu! API again. Idempotent, so it doubles as the
+-- migration for databases created before the profile page existed.
+ALTER TABLE ratings ADD COLUMN IF NOT EXISTS title     TEXT;
+ALTER TABLE ratings ADD COLUMN IF NOT EXISTS artist    TEXT;
+ALTER TABLE ratings ADD COLUMN IF NOT EXISTS cover_url TEXT;
 """
 
 

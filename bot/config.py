@@ -56,6 +56,9 @@ class WebConfig:
     public_base: str = "http://localhost:8000"
     # Set in production so sessions survive restarts; otherwise a local file is used.
     session_secret: str = ""
+    # Optional "support the project" link. Empty hides the button entirely, so the
+    # payment platform can be changed without touching any code.
+    donate_url: str = ""
 
     @property
     def redirect_uri(self) -> str:
@@ -125,6 +128,7 @@ class Config:
             public_base=_env("PUBLIC_BASE")
             or web_raw.get("public_base", "http://localhost:8000"),
             session_secret=_env("SESSION_SECRET") or "",
+            donate_url=_env("DONATE_URL") or web_raw.get("donate_url", ""),
         )
         database = DatabaseConfig(
             dsn=_env("DSN") or db_raw.get("dsn", DatabaseConfig.dsn),

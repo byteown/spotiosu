@@ -18,7 +18,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 # Fail early and clearly if the whole deploy/ folder was not copied over:
 # otherwise the script aborts half-way and leaves sudo/systemd unconfigured.
-for f in spotiosu.service Caddyfile; do
+for f in spotiosu.service Caddyfile backup.sh spotiosu-backup.service spotiosu-backup.timer; do
     if [ ! -f "$HERE/$f" ]; then
         echo "ERROR: $HERE/$f is missing." >&2
         echo "Copy the entire deploy/ directory, e.g.:" >&2
@@ -103,6 +103,15 @@ $APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart spotiosu, /usr/bin/sys
 EOF
 chmod 440 /etc/sudoers.d/spotiosu
 visudo -cf /etc/sudoers.d/spotiosu
+
+echo "==> Daily database backups"
+install -m 755 "$HERE/backup.sh" /usr/local/bin/spotiosu-backup.sh
+cp "$HERE/spotiosu-backup.service" /etc/systemd/system/spotiosu-backup.service
+cp "$HERE/spotiosu-backup.timer"   /etc/systemd/system/spotiosu-backup.timer
+install -d -m 750 /var/backups/spotiosu
+systemctl daemon-reload
+systemctl enable --now spotiosu-backup.timer
+echo "    next run: $(systemctl show spotiosu-backup.timer -p NextElapseUSecRealtime --value)"
 
 echo "==> Caddy site config"
 sed "s/{\$SITE_ADDRESS}/${DOMAIN}/g" "$HERE/Caddyfile" > /etc/caddy/Caddyfile

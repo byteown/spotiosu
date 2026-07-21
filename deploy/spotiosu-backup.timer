@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the spotiosu database backup daily
+
+[Timer]
+OnCalendar=daily
+# The VPS is not on 24/7 by contract; catch up if a run was missed.
+Persistent=true
+# Avoid every server on the host dumping at exactly 00:00.
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target

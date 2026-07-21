@@ -22,7 +22,12 @@
 <div id="shell" class="hidden">
   <header class="topbar">
     <div class="brand">spoti<span class="accent">osu</span></div>
+    <nav id="nav" class="nav hidden">
+      <button id="nav-player" class="nav-btn on">Player</button>
+      <button id="nav-profile" class="nav-btn">Profile</button>
+    </nav>
     <div class="profile">
+      <a id="donate" class="btn-donate hidden" target="_blank" rel="noopener">♥ Support</a>
       <img id="avatar" class="avatar" alt="" />
       <div class="profile-meta">
         <div id="username" class="username"></div>
@@ -115,6 +120,56 @@
 
     <div id="stage-loading" class="stage-msg hidden"><span class="spinner"></span> Building your recommendations…</div>
     <div id="stage-empty" class="stage-msg hidden"></div>
+  </section>
+
+  <!-- ---- Profile: what we learned about your taste ---- -->
+  <section id="profile-view" class="hidden">
+    <div class="profile-page">
+
+      <div class="taste-hero">
+        <div class="hero-label">Your taste</div>
+        <div id="taste-line" class="hero-line">—</div>
+        <div id="taste-sub" class="hero-sub"></div>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><div id="t-rated" class="tile-value">0</div><div class="tile-label">tracks rated</div></div>
+        <div class="tile"><div id="t-liked" class="tile-value">0</div><div class="tile-label">liked</div></div>
+        <div class="tile"><div id="t-rate" class="tile-value">0%</div><div class="tile-label">like rate</div></div>
+        <div class="tile"><div id="t-bpm" class="tile-value">0</div><div class="tile-label">typical BPM</div></div>
+      </div>
+
+      <figure class="chart-card">
+        <figcaption class="chart-title">Genre affinity</figcaption>
+        <p class="chart-note">How many maps of each genre you kept versus skipped.</p>
+        <div class="legend">
+          <span class="legend-item"><i class="swatch pos"></i>Liked</span>
+          <span class="legend-item"><i class="swatch neg"></i>Disliked</span>
+        </div>
+        <div id="genre-chart" class="chart"></div>
+      </figure>
+
+      <figure class="chart-card">
+        <figcaption class="chart-title">Difficulty you enjoy</figcaption>
+        <p class="chart-note">Liked maps, grouped into half-star steps.</p>
+        <div id="diff-chart" class="chart"></div>
+      </figure>
+
+      <figure class="chart-card">
+        <figcaption class="chart-title">Favourite mappers</figcaption>
+        <p class="chart-note">Mappers whose maps you liked most often.</p>
+        <div id="mapper-chart" class="chart"></div>
+      </figure>
+
+      <div class="chart-card">
+        <div class="chart-title">Recently liked</div>
+        <div id="recent-likes" class="recent-grid"></div>
+      </div>
+
+      <div id="profile-empty" class="stage-msg hidden">
+        Rate a few more tracks in the player and your taste profile will appear here.
+      </div>
+    </div>
   </section>
 </div>
 
