@@ -24,7 +24,7 @@ from bot.config import Config
 from bot.db import Database
 from bot.genres import genre_list, genre_name
 from bot.osu_api import OsuApi
-from bot.pp import PpCalculator
+from bot.pp import PpCalculator, parse_mods
 from bot.recommender import Recommender
 from bot.store import Store, migrate_json_file
 
@@ -373,6 +373,20 @@ def create_app(config: Config) -> FastAPI:
             },
             "genre_weights": {str(k): v for k, v in profile.genre_weights.items()},
         }
+
+    @app.get("/api/pp")
+    async def api_pp(request: Request, beatmap_id: int, mods: str = ""):
+        """pp for one beatmap, fetched lazily by the player.
+
+        Kept out of /api/feed on purpose: the .osu download behind it costs about
+        half a second per map, which is most of a batch response. Results are
+        memoised, so revisits and other users get them for free.
+        """
+        _require_user(request)
+        _acronyms, mods_bits = parse_mods(mods or None)
+        pp = await request.app.state.reco.compute_pp(beatmap_id, mods_bits)
+        return {"beatmap_id": beatmap_id,
+                "pp": {str(int(k)): v for k, v in (pp or {}).items()}}
 
     @app.get("/api/profile/stats")
     async def api_profile_stats(request: Request):

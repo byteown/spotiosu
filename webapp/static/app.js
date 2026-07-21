@@ -250,22 +250,59 @@ function render() {
   $("stage-bg").style.backgroundImage = rec.cover_url ? `url("${rec.cover_url}")` : "none";
   $("t-title").textContent = rec.title;
   $("t-artist").textContent = rec.artist;
-  const sub = [`[${rec.version}]`, `mapped by ${rec.creator}`];
+  const sub = [`[${rec.version}]`, `${t("mapped_by")} ${rec.creator}`];
   $("t-sub").textContent = sub.join(" · ");
-
-  const b = [`<span class="badge stars">★ ${rec.stars.toFixed(2)}</span>`];
-  if (rec.genre_name) b.push(`<span class="badge genre">${esc(rec.genre_name)}</span>`);
-  if (rec.bpm) b.push(`<span class="badge">${Math.round(rec.bpm)} BPM</span>`);
-  if (rec.length_str) b.push(`<span class="badge">${rec.length_str}</span>`);
-  if (rec.mods && rec.mods.length) b.push(`<span class="badge">+${rec.mods.join("")}</span>`);
-  if (rec.pp && rec.pp["100"] != null)
-    b.push(`<span class="badge pp">${Math.round(rec.pp["100"])}pp @100%</span>`);
-  $("t-badges").innerHTML = b.join("");
+  renderBadges(rec);
 
   $("open-osu").href = rec.url;
   $("open-osu").onclick = (e) => openInOsu(e, rec);
   loadPreview(rec);
+
+  ensurePp(rec);      // fills the pp badge in once it arrives
+  preloadNext();      // cover + pp of the following track
   maybePrefetch();
+}
+
+function renderBadges(rec) {
+  const b = [`<span class="badge stars">★ ${rec.stars.toFixed(2)}</span>`];
+  if (rec.genre_name) {
+    b.push(`<span class="badge genre">${esc(genreLabel(rec.genre_id, rec.genre_name))}</span>`);
+  }
+  if (rec.bpm) b.push(`<span class="badge">${Math.round(rec.bpm)} BPM</span>`);
+  if (rec.length_str) b.push(`<span class="badge">${rec.length_str}</span>`);
+  if (rec.mods && rec.mods.length) b.push(`<span class="badge">+${rec.mods.join("")}</span>`);
+  if (rec.pp && rec.pp["100"] != null) {
+    b.push(`<span class="badge pp">${Math.round(rec.pp["100"])}pp @100%</span>`);
+  } else if (rec.pp === undefined) {
+    b.push(`<span class="badge pp pp-loading">pp…</span>`);
+  }
+  $("t-badges").innerHTML = b.join("");
+}
+
+/* pp costs a .osu download server-side, so it is fetched per track instead of
+   for the whole batch. `rec.pp === undefined` means "not asked yet", `{}` means
+   "asked, unavailable" - so a failed lookup does not retry forever. */
+async function ensurePp(rec) {
+  if (!rec || rec.pp !== undefined || rec._ppPending) return;
+  rec._ppPending = true;
+  try {
+    const mods = rec.mods && rec.mods.length ? `&mods=${rec.mods.join("")}` : "";
+    const res = await fetch(`/api/pp?beatmap_id=${rec.beatmap_id}${mods}`);
+    rec.pp = res.ok ? (await res.json()).pp || {} : {};
+  } catch (_) {
+    rec.pp = {};
+  } finally {
+    rec._ppPending = false;
+  }
+  // The user may have rated and moved on while this was in flight.
+  if (current() === rec) renderBadges(rec);
+}
+
+function preloadNext() {
+  const next = S.queue[S.idx + 1];
+  if (!next) return;
+  if (next.cover_url) new Image().src = next.cover_url;
+  ensurePp(next);
 }
 
 // Try to hand the beatmap straight to osu!lazer via its `osu://` URL scheme.

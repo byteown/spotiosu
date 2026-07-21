@@ -11,6 +11,7 @@ import logging
 import math
 import random
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from .genres import genre_name
@@ -132,6 +133,10 @@ class Recommender:
         self._candidate_pages = candidate_pages
         self._profile_ttl = profile_ttl
         self._profile_cache: dict[str, tuple[float, TasteProfile]] = {}
+        # pp for a given (beatmap, mods) never changes, so it is worth keeping:
+        # the .osu download behind it costs ~0.5s and is shared across users.
+        self._pp_cache: OrderedDict[tuple[int, int], dict[float, float] | None] = OrderedDict()
+        self._pp_cache_max = 1000
 
     def invalidate_profile(self, username: str) -> None:
         self._profile_cache.pop(username.lower(), None)
@@ -322,9 +327,15 @@ class Recommender:
         self, username: str, user_id: int, mode: str,
         mod_string: str | None = None, count: int = 15,
         min_stars: float | None = None, max_stars: float | None = None,
+        with_pp: bool = False,
     ) -> list[Recommendation]:
-        """Return a ranked queue of recommendations (for the web player). pp for all
-        picks is computed concurrently to keep latency low."""
+        """Return a ranked queue of recommendations (for the web player).
+
+        pp is left out by default: computing it for the whole batch means one .osu
+        download per map (~0.5s each) and dominated the response time, even though
+        the player shows one track at a time and the user may never reach most of
+        them. The client fetches pp per track from /api/pp instead.
+        """
         acronyms, mods_bits = parse_mods(mod_string)
         profile, scored = await self._scored_candidates(
             username, user_id, mode, acronyms, min_stars, max_stars
@@ -334,13 +345,16 @@ class Recommender:
             username, [int(bset["id"]) for _, bset, _bm in picks]
         )
 
-        sem = asyncio.Semaphore(8)
+        pps: list[dict[float, float] | None] = [None] * len(picks)
+        if with_pp:
+            sem = asyncio.Semaphore(8)
 
-        async def pp_for(bm: dict) -> dict[float, float] | None:
-            async with sem:
-                return await self._compute_pp(int(bm["id"]), mods_bits)
+            async def pp_for(bm: dict) -> dict[float, float] | None:
+                async with sem:
+                    return await self.compute_pp(int(bm["id"]), mods_bits)
 
-        pps = await asyncio.gather(*(pp_for(bm) for _, _bset, bm in picks))
+            pps = list(await asyncio.gather(*(pp_for(bm) for _, _bset, bm in picks)))
+
         recs = [
             self._make_rec(bset, bm, profile, acronyms, pp)
             for (_, bset, bm), pp in zip(picks, pps)
@@ -515,13 +529,25 @@ class Recommender:
         s += random.uniform(0, JITTER)
         return s
 
-    async def _compute_pp(self, beatmap_id: int, mods_bits: int) -> dict[float, float] | None:
+    async def compute_pp(self, beatmap_id: int, mods_bits: int) -> dict[float, float] | None:
+        """pp at the standard accuracies, memoised (the result is deterministic)."""
         if not self._pp.available:
             return None
+        key = (int(beatmap_id), int(mods_bits))
+        if key in self._pp_cache:
+            self._pp_cache.move_to_end(key)
+            return self._pp_cache[key]
+
         osu_text = await self._api.download_osu_file(beatmap_id)
-        if not osu_text:
-            return None
-        return self._pp.compute(osu_text, mods_bits, DEFAULT_ACCS)
+        result = self._pp.compute(osu_text, mods_bits, DEFAULT_ACCS) if osu_text else None
+
+        self._pp_cache[key] = result
+        if len(self._pp_cache) > self._pp_cache_max:
+            self._pp_cache.popitem(last=False)
+        return result
+
+    # Kept for the existing internal call sites.
+    _compute_pp = compute_pp
 
     # ---- /np : pp for an arbitrary beatmap ----------------------------------
     async def pp_for_beatmap(

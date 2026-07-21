@@ -158,6 +158,9 @@ button { font-family: inherit; cursor: pointer; border: none; }
 .badge { font-size: 12px; background: #26262f; color: #cfcfd8; padding: 5px 12px; border-radius: 999px; }
 .badge.stars { background: #3a2130; color: var(--accent-2); font-weight: 700; }
 .badge.pp { background: #23303a; color: #7cc8e6; }
+/* pp arrives a moment after the card; keep the slot visible but quiet. */
+.badge.pp-loading { color: #5a7a8a; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
 .badge.genre { background: #2a2438; color: #b8a5e0; }
 
 .seekrow { display: flex; align-items: center; gap: 12px; width: 100%; margin-bottom: 12px; }
