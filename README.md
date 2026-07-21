@@ -65,6 +65,8 @@ First run creates a virtualenv and installs dependencies. Then open
   the sliders for an exact ★ range (respected strictly).
 - **Mods** (e.g. `HDDT`) — targets maps that play well with them; pp is computed with them.
 - **Preview volume starts at 20%** every time, adjustable with the slider.
+- **Autoplay previews** — checkbox under the player, **off by default**; your choice is
+  remembered in the browser.
 - **Open in osu!** opens the beatmap page. **Reset history** lets older maps return.
 - **Retake quiz** clears your genres/ratings and starts the questionnaire over.
 

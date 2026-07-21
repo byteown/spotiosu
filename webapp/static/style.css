@@ -182,6 +182,9 @@ button { font-family: inherit; cursor: pointer; border: none; }
 .big-btn.like:hover { background: #1e3226; border-color: var(--good); }
 .big-btn.dislike:hover { background: #331e1e; border-color: var(--bad); }
 
+.autoplay-row { justify-content: center; margin-bottom: 18px; user-select: none; }
+.autoplay-row:hover { color: var(--text); }
+
 .open-link {
   color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600;
   border-bottom: 1px dashed #3a3a48; padding-bottom: 2px;

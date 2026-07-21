@@ -1,7 +1,8 @@
 "use strict";
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_VOLUME = 0.20; // preview always starts at 20%
+const DEFAULT_VOLUME = 0.20;          // preview always starts at 20%
+const AUTOPLAY_KEY = "spotiosu.autoplay";  // off unless the user opts in
 
 const S = {
   user: null,
@@ -14,6 +15,7 @@ const S = {
   idx: 0,
   pending: null,   // in-flight prefetch promise
   busy: false,
+  autoplay: false, // off by default; toggled by the checkbox under the player
   filters: { auto: true, min: 3, max: 6, mods: "" },
 };
 
@@ -258,17 +260,24 @@ function openInOsu(e, rec) {
 // ============================ audio ============================
 const audio = () => $("audio");
 
-// Load the preview but never start it on its own - the user presses play.
+// Load the preview. It only starts on its own if the user enabled autoplay;
+// otherwise they press play.
 function loadPreview(rec) {
   const a = audio();
   a.pause();
   a.src = rec.preview_url || "";
   a.currentTime = 0;
   a.volume = currentVolume();
-  setPlayIcon(false);
   $("seek").value = 0;
   $("t-cur").textContent = "0:00";
   $("t-dur").textContent = "0:00";
+
+  if (S.autoplay && a.src) {
+    // The browser may still refuse without a gesture; the play button always works.
+    a.play().then(() => setPlayIcon(true)).catch(() => setPlayIcon(false));
+  } else {
+    setPlayIcon(false);
+  }
 }
 
 function currentVolume() { return ($("vol").value || 0) / 100; }
@@ -283,6 +292,20 @@ function wireAudio() {
   a.volume = DEFAULT_VOLUME;
   $("vol").value = Math.round(DEFAULT_VOLUME * 100);
   $("vol-label").textContent = Math.round(DEFAULT_VOLUME * 100) + "%";
+
+  // Autoplay is off by default; the user's choice is remembered.
+  let saved = null;
+  try { saved = localStorage.getItem(AUTOPLAY_KEY); } catch (_) {}
+  S.autoplay = saved === "1";
+  $("autoplay").checked = S.autoplay;
+  $("autoplay").onchange = (e) => {
+    S.autoplay = e.target.checked;
+    try { localStorage.setItem(AUTOPLAY_KEY, S.autoplay ? "1" : "0"); } catch (_) {}
+    // Turning it on should start the track you are looking at right now.
+    if (S.autoplay && a.src && a.paused) {
+      a.play().then(() => setPlayIcon(true)).catch(() => {});
+    }
+  };
 
   $("vol").oninput = (e) => {
     a.volume = e.target.value / 100;
