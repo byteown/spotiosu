@@ -120,9 +120,20 @@ jobs:
             "$SSH_USER@$SSH_HOST" bash -euo pipefail <<'EOF'
           cd /opt/spotiosu
           ./venv/bin/pip install -q --upgrade -r app/requirements.txt
-          sudo /usr/bin/systemctl restart spotiosu
+
+          # -n: never prompt. The sudoers rule matches this exact argument list -
+          # adding any flag here would stop it matching and ask for a password.
+          if ! sudo -n /usr/bin/systemctl restart spotiosu; then
+            echo "ERROR: 'deploy' cannot restart the service without a password." >&2
+            echo "Install the sudoers rule on the server (as root):" >&2
+            echo "  bash /root/deploy/setup-server.sh" >&2
+            exit 1
+          fi
+
           sleep 3
-          sudo /usr/bin/systemctl status spotiosu --no-pager -l | head -15
+          # Reading state needs no privileges, so no sudo (and flags are free).
+          systemctl status spotiosu --no-pager -l | head -20
+          systemctl is-active --quiet spotiosu || { echo "service is not active" >&2; exit 1; }
           EOF
 
       - name: Verify the site is up

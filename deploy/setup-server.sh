@@ -14,6 +14,18 @@ APP_USER="deploy"
 APP_ROOT="/opt/spotiosu"
 DOMAIN="${DOMAIN:-spotiosu.ru}"
 PY="python3.12"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+# Fail early and clearly if the whole deploy/ folder was not copied over:
+# otherwise the script aborts half-way and leaves sudo/systemd unconfigured.
+for f in spotiosu.service Caddyfile; do
+    if [ ! -f "$HERE/$f" ]; then
+        echo "ERROR: $HERE/$f is missing." >&2
+        echo "Copy the entire deploy/ directory, e.g.:" >&2
+        echo "  scp -r deploy root@<server>:/root/" >&2
+        exit 1
+    fi
+done
 
 echo "==> Creating $APP_USER"
 id -u "$APP_USER" >/dev/null 2>&1 || adduser --disabled-password --gecos "" "$APP_USER"
@@ -77,19 +89,23 @@ chown "$APP_USER:$APP_USER" "$APP_ROOT/.env"
 chmod 600 "$APP_ROOT/.env"
 
 echo "==> systemd service"
-cp "$(dirname "$0")/spotiosu.service" /etc/systemd/system/spotiosu.service
+cp "$HERE/spotiosu.service" /etc/systemd/system/spotiosu.service
 systemctl daemon-reload
 systemctl enable spotiosu
 
 echo "==> Letting $APP_USER restart the service from CI"
+# NOTE: when a sudoers entry lists arguments, the user's command line must match
+# them EXACTLY - adding e.g. --no-pager would no longer match and sudo would ask
+# for a password. So each entry here is exactly what CI runs, and nothing more.
+# 'status'/'is-active' are not listed: reading unit state needs no privileges.
 cat > /etc/sudoers.d/spotiosu <<EOF
-$APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart spotiosu, /usr/bin/systemctl status spotiosu, /usr/bin/systemctl start spotiosu, /usr/bin/systemctl stop spotiosu
+$APP_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart spotiosu, /usr/bin/systemctl start spotiosu, /usr/bin/systemctl stop spotiosu
 EOF
 chmod 440 /etc/sudoers.d/spotiosu
 visudo -cf /etc/sudoers.d/spotiosu
 
 echo "==> Caddy site config"
-sed "s/{\$SITE_ADDRESS}/${DOMAIN}/g" "$(dirname "$0")/Caddyfile" > /etc/caddy/Caddyfile
+sed "s/{\$SITE_ADDRESS}/${DOMAIN}/g" "$HERE/Caddyfile" > /etc/caddy/Caddyfile
 systemctl reload caddy || systemctl restart caddy
 
 echo
