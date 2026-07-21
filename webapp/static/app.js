@@ -492,11 +492,13 @@ async function showProfile() {
 }
 
 function renderProfile(d) {
-  const t = d.totals || {};
-  $("t-rated").textContent = t.rated ?? 0;
-  $("t-liked").textContent = t.liked ?? 0;
-  $("t-rate").textContent = (t.like_rate ?? 0) + "%";
-  $("t-bpm").textContent = t.avg_bpm || "—";
+  // NB: never name a local `t` in this file - it would shadow the global
+  // translation function t() from i18n.js.
+  const tot = d.totals || {};
+  $("t-rated").textContent = tot.rated ?? 0;
+  $("t-liked").textContent = tot.liked ?? 0;
+  $("t-rate").textContent = (tot.like_rate ?? 0) + "%";
+  $("t-bpm").textContent = tot.avg_bpm || "—";
 
   $("taste-line").textContent = tasteLine(d.summary);
   const svt = d.skill_vs_taste || {};
@@ -507,7 +509,7 @@ function renderProfile(d) {
       })
     : "";
 
-  const empty = !t.rated;
+  const empty = !tot.rated;
   $("profile-empty").classList.toggle("hidden", !empty);
   document.querySelectorAll(".chart-card").forEach((c) => c.classList.toggle("hidden", empty));
   if (empty) return;

@@ -30,46 +30,8 @@ jobs:
       - name: Check JavaScript syntax
         run: node --check webapp/static/app.js
 
-      - name: Frontend element ids referenced by JS must exist in HTML
-        run: |
-          python - <<'PY'
-          import re, pathlib, sys
-          html = pathlib.Path("webapp/static/index.html").read_text(encoding="utf-8")
-          js = pathlib.Path("webapp/static/app.js").read_text(encoding="utf-8")
-          ids = set(re.findall(r'\bid="([^"]+)"', html))
-          refs = set(re.findall(r'\$\("([^"]+)"\)', js))
-          missing = sorted(refs - ids)
-          print(f"{len(ids)} ids in HTML, {len(refs)} referenced in JS")
-          if missing:
-              sys.exit(f"JS references missing elements: {missing}")
-          PY
-
-      - name: Every asset the page references must exist and be deployable
-        run: |
-          python - <<'PY'
-          import re, json, pathlib, sys
-          html = pathlib.Path("webapp/static/index.html").read_text(encoding="utf-8")
-          missing = []
-          for ref in sorted(set(re.findall(r'(?:href|src)="(/[^"]+)"', html))):
-              if ref == "/favicon.ico":
-                  path = pathlib.Path("webapp/static/favicon/favicon.ico")
-              elif ref.startswith("/static/"):
-                  path = pathlib.Path("webapp") / ref.lstrip("/")
-              else:
-                  continue  # an app route, not a file
-              if not path.is_file():
-                  missing.append(ref)
-          manifest = json.loads(
-              pathlib.Path("webapp/static/favicon/site.webmanifest").read_text(encoding="utf-8"))
-          for icon in manifest["icons"]:
-              if not (pathlib.Path("webapp") / icon["src"].lstrip("/")).is_file():
-                  missing.append(icon["src"])
-          # Only webapp/ and bot/ are rsynced to the server, so an asset outside
-          # them would 404 in production even though it exists locally.
-          if missing:
-              sys.exit(f"assets referenced but not present under webapp/: {missing}")
-          print("all referenced assets resolve")
-          PY
+      - name: Front-end checks (ids, i18n keys, shadowing, assets)
+        run: node .github/scripts/check_frontend.js
 
       - name: Config must load from environment alone (no config.json)
         env:
