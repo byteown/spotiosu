@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>spotiosu — your osu! radio</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ============ Login ============ -->
+<section id="login" class="hidden">
+  <div class="login-card">
+    <h1>spoti<span class="accent">osu</span></h1>
+    <p>Beatmap recommendations built from your music taste and your skill level.</p>
+    <a class="btn-osu" href="/login">Sign in with osu!</a>
+    <p id="login-error" class="error hidden"></p>
+  </div>
+</section>
+
+<!-- ============ App shell ============ -->
+<div id="shell" class="hidden">
+  <header class="topbar">
+    <div class="brand">spoti<span class="accent">osu</span></div>
+    <div class="profile">
+      <img id="avatar" class="avatar" alt="" />
+      <div class="profile-meta">
+        <div id="username" class="username"></div>
+        <div id="stats" class="stats"></div>
+      </div>
+      <button id="reonboard" class="btn-ghost" title="Redo the taste questionnaire">Retake quiz</button>
+      <button id="logout" class="btn-ghost">Log out</button>
+    </div>
+  </header>
+
+  <!-- ---- Onboarding step 1: genres ---- -->
+  <section id="genres-view" class="hidden">
+    <div class="wizard">
+      <div class="step-label">Step 1 of 2</div>
+      <h2>What music do you like?</h2>
+      <p class="muted">Pick at least 2 genres. We'll play you songs from them and
+        learn your taste from your ratings.</p>
+      <div id="genre-grid" class="genre-grid"></div>
+      <button id="genres-continue" class="btn-primary" disabled>Continue</button>
+    </div>
+  </section>
+
+  <!-- ---- Player stage (used for onboarding ratings AND recommendations) ---- -->
+  <section id="stage-view" class="hidden">
+
+    <div id="onboard-bar" class="onboard-bar hidden">
+      <div>
+        <div class="step-label">Step 2 of 2</div>
+        <div class="ob-text">Listen and rate — this builds your recommendations</div>
+      </div>
+      <div class="ob-progress">
+        <div class="progress"><div id="ob-fill" class="progress-fill"></div></div>
+        <div id="ob-count" class="ob-count"></div>
+      </div>
+    </div>
+
+    <div id="filters" class="filters hidden">
+      <div class="filter-group">
+        <label>Difficulty</label>
+        <div class="range-row">
+          <input id="min-stars" type="range" min="1" max="10" step="0.1" value="3" />
+          <span id="range-label" class="range-label">auto</span>
+          <input id="max-stars" type="range" min="1" max="10" step="0.1" value="6" />
+        </div>
+      </div>
+      <label class="check"><input id="auto-diff" type="checkbox" checked /> Match my skill</label>
+      <input id="mods" class="mods-input" placeholder="mods (e.g. HDDT)" autocomplete="off" />
+      <button id="apply-filters" class="btn-ghost">Apply</button>
+      <button id="reset-history" class="btn-ghost" title="Let previously shown maps appear again">Reset history</button>
+    </div>
+
+    <div id="stage" class="stage hidden">
+      <div id="stage-bg" class="stage-bg"></div>
+      <div class="stage-inner">
+        <img id="art" class="art" alt="" />
+        <div class="meta">
+          <div id="t-title" class="t-title"></div>
+          <div id="t-artist" class="t-artist"></div>
+          <div id="t-sub" class="t-sub"></div>
+          <div id="t-badges" class="badges"></div>
+        </div>
+
+        <div class="seekrow">
+          <span id="t-cur" class="time">0:00</span>
+          <input id="seek" class="seek" type="range" min="0" max="100" value="0" />
+          <span id="t-dur" class="time">0:00</span>
+        </div>
+
+        <div class="volrow">
+          <span class="vol-icon">🔊</span>
+          <input id="vol" class="vol" type="range" min="0" max="100" value="20" />
+          <span id="vol-label" class="vol-label">20%</span>
+        </div>
+
+        <div class="actions">
+          <button id="btn-dislike" class="big-btn dislike" title="Not for me (Left arrow)">👎</button>
+          <button id="btn-play" class="big-btn play" title="Play / pause (Space)">▶</button>
+          <button id="btn-like" class="big-btn like" title="More like this (Right arrow)">👍</button>
+        </div>
+
+        <a id="open-osu" class="open-link" target="_blank" rel="noopener">Open in osu! →</a>
+        <div class="hint">You must rate to continue — <b>←</b> dislike · <b>space</b> play/pause · <b>→</b> like</div>
+      </div>
+    </div>
+
+    <div id="stage-loading" class="stage-msg hidden"><span class="spinner"></span> Building your recommendations…</div>
+    <div id="stage-empty" class="stage-msg hidden"></div>
+  </section>
+</div>
+
+<audio id="audio"></audio>
+<script src="/static/app.js"></script>
+</body>
+</html>

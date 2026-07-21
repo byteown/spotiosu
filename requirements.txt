@@ -1,0 +1,7 @@
+# spotiosu — osu! song-recommendation web app (+ legacy IRC/console bot)
+httpx>=0.27          # async HTTP for the osu! API v2
+rosu-pp-py>=1.0      # local pp calculation from .osu files (optional but recommended)
+fastapi>=0.110       # web backend
+uvicorn>=0.29        # ASGI server
+itsdangerous>=2.0    # signed session cookies (Starlette SessionMiddleware)
+jinja2>=3.0          # (optional) templating, used by Starlette responses

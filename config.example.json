@@ -1,0 +1,24 @@
+{
+  "osu_irc": {
+    "username": "YourOsuUsername",
+    "password": "your-irc-password-from-osu.ppy.sh/p/irc",
+    "server": "irc.ppy.sh",
+    "port": 6667
+  },
+  "osu_api": {
+    "client_id": 0,
+    "client_secret": "your-oauth-client-secret"
+  },
+  "bot": {
+    "command_prefix": "!",
+    "default_mode": "osu",
+    "star_window": 0.7,
+    "recent_seen_limit": 400,
+    "candidate_pages": 2
+  },
+  "web": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "public_base": "http://localhost:8000"
+  }
+}
