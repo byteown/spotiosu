@@ -405,5 +405,11 @@ def create_app(config: Config) -> FastAPI:
     async def index():
         return FileResponse(STATIC_DIR / "index.html")
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        # Browsers request /favicon.ico from the site root on their own, whatever
+        # the <link> tags say - serving it here keeps that from 404-ing.
+        return FileResponse(STATIC_DIR / "favicon" / "favicon.ico")
+
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     return app
