@@ -5,3 +5,4 @@ fastapi>=0.110       # web backend
 uvicorn>=0.29        # ASGI server
 itsdangerous>=2.0    # signed session cookies (Starlette SessionMiddleware)
 jinja2>=3.0          # (optional) templating, used by Starlette responses
+asyncpg>=0.29        # PostgreSQL driver (see docker-compose.yml)

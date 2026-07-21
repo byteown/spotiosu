@@ -20,11 +20,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from bot.config import Config
+from bot.db import Database
 from bot.genres import genre_list
 from bot.osu_api import OsuApi
 from bot.pp import PpCalculator
 from bot.recommender import Recommender
-from bot.store import Store
+from bot.store import Store, migrate_json_file
 
 from . import oauth
 
@@ -52,8 +53,11 @@ def create_app(config: Config) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.config = config
+        app.state.db = Database(config.database.dsn)
+        await app.state.db.connect()
+        app.state.store = Store(app.state.db)
+        await migrate_json_file(app.state.store)  # one-time import of legacy data.json
         app.state.api = OsuApi(config.api.client_id, config.api.client_secret)
-        app.state.store = Store()
         app.state.reco = Recommender(
             app.state.api, PpCalculator(), app.state.store,
             star_window=config.bot.star_window,
@@ -62,6 +66,7 @@ def create_app(config: Config) -> FastAPI:
         log.info("spotiosu web ready at %s", config.web.public_base)
         yield
         await app.state.api.close()
+        await app.state.db.close()
 
     app = FastAPI(title="spotiosu", lifespan=lifespan)
     app.add_middleware(SessionMiddleware, secret_key=_session_secret(),
@@ -115,12 +120,11 @@ def create_app(config: Config) -> FastAPI:
             return JSONResponse({"user": None})
         store = request.app.state.store
         uname = user["username"]
-        ratings = store.get_ratings(uname)
         return {
             "user": user,
-            "onboarded": store.is_onboarded(uname),
-            "genres": store.get_genres(uname),
-            "rated_count": len(ratings),
+            "onboarded": await store.is_onboarded(uname),
+            "genres": await store.get_genres(uname),
+            "rated_count": await store.count_ratings(uname),
             "onboarding_target": ONBOARDING_TARGET,
             "all_genres": genre_list(),
         }
@@ -132,7 +136,7 @@ def create_app(config: Config) -> FastAPI:
         genres = [int(g) for g in (body.get("genres") or [])]
         if len(genres) < 2:
             raise HTTPException(status_code=400, detail="pick at least 2 genres")
-        request.app.state.store.set_genres(user["username"], genres)
+        await request.app.state.store.set_genres(user["username"], genres)
         request.app.state.reco.invalidate_profile(user["username"])
         return {"ok": True, "genres": genres}
 
@@ -141,7 +145,7 @@ def create_app(config: Config) -> FastAPI:
         user = _require_user(request)
         store, reco = request.app.state.store, request.app.state.reco
         uname = user["username"]
-        genres = store.get_genres(uname)
+        genres = await store.get_genres(uname)
         if not genres:
             raise HTTPException(status_code=400, detail="pick genres first")
         tracks = await reco.sample_for_onboarding(
@@ -153,14 +157,14 @@ def create_app(config: Config) -> FastAPI:
     @app.post("/api/onboarding/complete")
     async def api_onboarding_complete(request: Request):
         user = _require_user(request)
-        request.app.state.store.set_onboarded(user["username"], True)
+        await request.app.state.store.set_onboarded(user["username"], True)
         request.app.state.reco.invalidate_profile(user["username"])
         return {"ok": True}
 
     @app.post("/api/reonboard")
     async def api_reonboard(request: Request):
         user = _require_user(request)
-        request.app.state.store.reset_onboarding(user["username"])
+        await request.app.state.store.reset_onboarding(user["username"])
         request.app.state.reco.invalidate_profile(user["username"])
         return {"ok": True}
 
@@ -180,7 +184,7 @@ def create_app(config: Config) -> FastAPI:
         set_id = int(body.get("set_id") or 0)
         stars = float(body.get("stars") or 0)
 
-        store.add_rating(uname, {
+        await store.add_rating(uname, {
             "set_id": set_id,
             "beatmap_id": int(body.get("beatmap_id") or 0),
             "genre_id": int(body.get("genre_id") or 0),
@@ -191,15 +195,15 @@ def create_app(config: Config) -> FastAPI:
         })
         # Keep the legacy like-weights in sync (shared with the CLI bot).
         if creator:
-            store.adjust_like(uname, f"mapper:{creator}", 0.4 if liked else -0.5)
+            await store.adjust_like(uname, f"mapper:{creator}", 0.4 if liked else -0.5)
         if liked and stars:
-            store.adjust_like(uname, "_star_sum", stars)
-            store.adjust_like(uname, "_star_cnt", 1)
+            await store.adjust_like(uname, "_star_sum", stars)
+            await store.adjust_like(uname, "_star_cnt", 1)
         if set_id:
-            store.mark_seen(uname, set_id)  # never show the same map twice
+            await store.mark_seen(uname, set_id)  # never show the same map twice
 
         reco.invalidate_profile(uname)  # recommendations rebuild from here on
-        return {"ok": True, "rated_count": len(store.get_ratings(uname))}
+        return {"ok": True, "rated_count": await store.count_ratings(uname)}
 
     # ---- recommendations ----------------------------------------------------
     @app.get("/api/feed")
@@ -227,7 +231,7 @@ def create_app(config: Config) -> FastAPI:
     @app.post("/api/reset")
     async def api_reset(request: Request):
         user = _require_user(request)
-        request.app.state.store.reset_seen(user["username"])
+        await request.app.state.store.reset_seen(user["username"])
         request.app.state.reco.invalidate_profile(user["username"])
         return {"ok": True}
 

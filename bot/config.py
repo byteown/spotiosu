@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -34,6 +35,11 @@ class BotConfig:
 
 
 @dataclass
+class DatabaseConfig:
+    dsn: str = "postgresql://spotiosu:spotiosu@localhost:5432/spotiosu"
+
+
+@dataclass
 class WebConfig:
     host: str = "127.0.0.1"
     port: int = 8000
@@ -51,6 +57,7 @@ class Config:
     api: ApiConfig
     bot: BotConfig = field(default_factory=BotConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    database: DatabaseConfig = field(default_factory=DatabaseConfig)
 
     @classmethod
     def load(cls, path: str | Path) -> "Config":
@@ -92,8 +99,14 @@ class Config:
             public_base=web_raw.get("public_base", "http://localhost:8000"),
         )
 
+        db_raw = raw.get("database", {})
+        database = DatabaseConfig(
+            dsn=os.environ.get("SPOTIOSU_DSN")
+            or db_raw.get("dsn", DatabaseConfig.dsn),
+        )
+
         _validate_api(api)
-        return cls(irc=irc, api=api, bot=bot, web=web)
+        return cls(irc=irc, api=api, bot=bot, web=web, database=database)
 
 
 def _validate_api(api: ApiConfig) -> None:

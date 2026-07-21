@@ -227,19 +227,48 @@ function render() {
   $("t-badges").innerHTML = b.join("");
 
   $("open-osu").href = rec.url;
-  playPreview(rec);
+  $("open-osu").onclick = (e) => openInOsu(e, rec);
+  loadPreview(rec);
   maybePrefetch();
+}
+
+// Try to hand the beatmap straight to osu!lazer via its `osu://` URL scheme.
+// If no handler picks it up (osu! not installed / scheme unregistered), the
+// browser stays focused and we fall back to the beatmap page on the website.
+function openInOsu(e, rec) {
+  e.preventDefault();
+  let handled = false;
+  const markHandled = () => { handled = true; };
+  window.addEventListener("blur", markHandled, { once: true });
+  document.addEventListener("visibilitychange", markHandled, { once: true });
+
+  try {
+    window.location.href = `osu://dl/${rec.set_id}`;
+  } catch (_) {
+    handled = false;
+  }
+
+  setTimeout(() => {
+    window.removeEventListener("blur", markHandled);
+    document.removeEventListener("visibilitychange", markHandled);
+    if (!handled && !document.hidden) window.open(rec.url, "_blank", "noopener");
+  }, 1200);
 }
 
 // ============================ audio ============================
 const audio = () => $("audio");
 
-function playPreview(rec) {
+// Load the preview but never start it on its own - the user presses play.
+function loadPreview(rec) {
   const a = audio();
+  a.pause();
   a.src = rec.preview_url || "";
+  a.currentTime = 0;
   a.volume = currentVolume();
-  a.play().catch(() => {});   // autoplay may need a gesture; button still works
-  setPlayIcon(true);
+  setPlayIcon(false);
+  $("seek").value = 0;
+  $("t-cur").textContent = "0:00";
+  $("t-dur").textContent = "0:00";
 }
 
 function currentVolume() { return ($("vol").value || 0) / 100; }

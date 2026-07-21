@@ -93,7 +93,7 @@ async def handle_message(msg: IncomingMessage, irc: IrcClient, ctx: BotContext) 
         elif cmd in ("with", "w"):
             await _handle_with(msg, irc, ctx, rest)
         elif cmd in ("reset",):
-            ctx.store.reset_seen(msg.sender)
+            await ctx.store.reset_seen(msg.sender)
             await irc.send_message(msg.sender, "Recommendation history cleared.")
         elif cmd in ("like", "l"):
             await _handle_feedback(msg, irc, ctx, like=True)
@@ -143,7 +143,7 @@ async def _handle_recommend(
 async def _handle_with(
     msg: IncomingMessage, irc: IrcClient, ctx: BotContext, rest: str
 ) -> None:
-    last = ctx.store.get_last(msg.sender)
+    last = await ctx.store.get_last(msg.sender)
     if not last:
         await irc.send_message(msg.sender, "No previous map. Use !r first.")
         return
@@ -160,20 +160,20 @@ async def _handle_with(
 async def _handle_feedback(
     msg: IncomingMessage, irc: IrcClient, ctx: BotContext, *, like: bool
 ) -> None:
-    last = ctx.store.get_last(msg.sender)
+    last = await ctx.store.get_last(msg.sender)
     if not last:
         await irc.send_message(msg.sender, "Nothing to rate yet. Use !r first.")
         return
     creator = last.get("creator", "")
     star = float(last.get("stars") or 0)
     if like:
-        ctx.store.adjust_like(msg.sender, f"mapper:{creator}", 0.4)
-        ctx.store.adjust_like(msg.sender, "_star_sum", star)
-        ctx.store.adjust_like(msg.sender, "_star_cnt", 1)
+        await ctx.store.adjust_like(msg.sender, f"mapper:{creator}", 0.4)
+        await ctx.store.adjust_like(msg.sender, "_star_sum", star)
+        await ctx.store.adjust_like(msg.sender, "_star_cnt", 1)
         await irc.send_message(msg.sender, "Noted - I'll lean toward maps like that. \U0001f44d")
     else:
-        ctx.store.adjust_like(msg.sender, f"mapper:{creator}", -0.5)
-        ctx.store.mark_seen(msg.sender, int(last["set_id"]))  # never suggest it again
+        await ctx.store.adjust_like(msg.sender, f"mapper:{creator}", -0.5)
+        await ctx.store.mark_seen(msg.sender, int(last["set_id"]))  # never again
         await irc.send_message(msg.sender, "Got it - steering away from that. \U0001f44e")
     ctx.reco.invalidate_profile(msg.sender)  # feedback changes the taste profile
 

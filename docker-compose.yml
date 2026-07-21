@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: spotiosu-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: spotiosu
+      POSTGRES_PASSWORD: spotiosu
+      POSTGRES_DB: spotiosu
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spotiosu -d spotiosu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

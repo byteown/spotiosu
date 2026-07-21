@@ -40,12 +40,23 @@ rating rebuilds your profile, so recommendations shift as you go.
    { "osu_api": { "client_id": 12345, "client_secret": "SECRET" } }
    ```
 
-### 2. Run
+### 2. Start the database
+Taste profiles live in PostgreSQL, run via Docker:
+```powershell
+docker compose up -d
+```
+The schema is created automatically on first start, and a legacy `data.json`
+(if present) is imported once and renamed to `data.json.migrated`.
+
+### 3. Run
 ```powershell
 .\run_web.ps1
 ```
 First run creates a virtualenv and installs dependencies. Then open
 <http://localhost:8000> and click **Sign in with osu!**.
+
+> The DSN comes from `config.json` (`database.dsn`) and can be overridden with the
+> `SPOTIOSU_DSN` environment variable.
 
 ## Using it
 - **👍 / 👎** — required to advance; also retrains your recommendations.
@@ -70,8 +81,10 @@ bot/              the recommendation engine (reused by the web app)
   recommender.py  taste profile, genre weighting, candidate search, scoring
   genres.py       osu! genre ids used by the quiz and search
   pp.py           mod parsing + rosu-pp pp calculation
-  store.py        JSON persistence (genres, ratings, seen maps) — atomic writes
+  db.py           PostgreSQL pool + schema
+  store.py        per-user state: genres, ratings, seen maps, learned weights
   config.py       config.json loading
+docker-compose.yml  PostgreSQL 17
 config.json       your credentials (gitignored)
 ```
 

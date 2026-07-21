@@ -145,7 +145,7 @@ class Recommender:
             return cached[1]
 
         best = await self._api.get_user_best(user_id, mode=mode, limit=100)
-        likes = self._store.get_likes(username)
+        likes = await self._store.get_likes(username)
 
         stars: list[float] = []
         weights: list[float] = []
@@ -190,11 +190,11 @@ class Recommender:
         fav_mappers = {m for m, _ in sorted(mappers.items(), key=lambda kv: -kv[1])[:8]}
         pp_level = (sum(pp_values[:10]) / min(len(pp_values), 10)) if pp_values else 0.0
 
-        genre_weights = self._genre_weights(username)
+        genre_weights = await self._genre_weights(username)
 
         # Songs the user actually liked steer BPM; difficulty stays tied to skill.
         liked_bpms = [
-            float(r["bpm"]) for r in self._store.get_ratings(username)
+            float(r["bpm"]) for r in await self._store.get_ratings(username)
             if r.get("liked") and r.get("bpm")
         ]
         if liked_bpms:
@@ -214,13 +214,13 @@ class Recommender:
         self._profile_cache[username.lower()] = (time.monotonic(), profile)
         return profile
 
-    def _genre_weights(self, username: str) -> dict[int, float]:
+    async def _genre_weights(self, username: str) -> dict[int, float]:
         """Genres the user picked at onboarding, then continuously corrected by
         every like/dislike they give afterwards."""
         weights: dict[int, float] = {}
-        for gid in self._store.get_genres(username):
+        for gid in await self._store.get_genres(username):
             weights[int(gid)] = weights.get(int(gid), 0.0) + GENRE_PICK_BONUS
-        for rating in self._store.get_ratings(username):
+        for rating in await self._store.get_ratings(username):
             gid = int(rating.get("genre_id") or 0)
             if not gid:
                 continue
@@ -228,8 +228,9 @@ class Recommender:
             weights[gid] = weights.get(gid, 0.0) + delta
         return {g: max(-1.0, min(1.5, w)) for g, w in weights.items()}
 
-    def preferred_genres(self, username: str, limit: int = 3) -> list[int]:
-        positive = [(g, w) for g, w in self._genre_weights(username).items() if w > 0]
+    async def preferred_genres(self, username: str, limit: int = 3) -> list[int]:
+        weights = await self._genre_weights(username)
+        positive = [(g, w) for g, w in weights.items() if w > 0]
         positive.sort(key=lambda kv: -kv[1])
         return [g for g, _ in positive[:limit]]
 
@@ -261,10 +262,10 @@ class Recommender:
         # the small tolerance we allow when the band is only inferred from skill.
         tolerance = 0.0 if (min_stars is not None or max_stars is not None) else 0.3
         candidates = await self._gather_candidates(
-            profile, mode, low, high, self.preferred_genres(username), tolerance
+            profile, mode, low, high, await self.preferred_genres(username), tolerance
         )
-        seen = self._store.get_seen(username)
-        likes = self._store.get_likes(username)
+        seen = await self._store.get_seen(username)
+        likes = await self._store.get_likes(username)
 
         scored: list[tuple[float, dict, dict]] = []
         for bset, bm in candidates:
@@ -307,10 +308,10 @@ class Recommender:
         if not scored:
             return None
         _, bset, bm = scored[0]
-        self._store.mark_seen(username, int(bset["id"]))
+        await self._store.mark_seen(username, int(bset["id"]))
         pp = await self._compute_pp(int(bm["id"]), mods_bits)
         rec = self._make_rec(bset, bm, profile, acronyms, pp)
-        self._store.set_last(username, {
+        await self._store.set_last(username, {
             "beatmap_id": rec.beatmap_id, "set_id": rec.set_id,
             "stars": rec.stars, "creator": rec.creator,
             "artist": rec.artist, "title": rec.title, "version": rec.version,
@@ -329,8 +330,9 @@ class Recommender:
             username, user_id, mode, acronyms, min_stars, max_stars
         )
         picks = scored[:count]
-        for _, bset, _bm in picks:
-            self._store.mark_seen(username, int(bset["id"]))
+        await self._store.mark_seen_many(
+            username, [int(bset["id"]) for _, bset, _bm in picks]
+        )
 
         sem = asyncio.Semaphore(8)
 
@@ -345,7 +347,7 @@ class Recommender:
         ]
         if recs:
             top = recs[0]
-            self._store.set_last(username, {
+            await self._store.set_last(username, {
                 "beatmap_id": top.beatmap_id, "set_id": top.set_id,
                 "stars": top.stars, "creator": top.creator,
                 "artist": top.artist, "title": top.title, "version": top.version,
@@ -377,7 +379,7 @@ class Recommender:
         # Round-robin across genres so every picked genre is represented.
         per_genre: list[list[Recommendation]] = []
         used: set[int] = set()
-        rated = {r.get("set_id") for r in self._store.get_ratings(username)}
+        rated = {r.get("set_id") for r in await self._store.get_ratings(username)}
         for res in results:
             if isinstance(res, BaseException):
                 log.warning("onboarding search failed: %s", res)

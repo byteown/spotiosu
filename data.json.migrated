@@ -1,0 +1,168 @@
+{
+  "users": {
+    "h35d": {
+      "seen_set_ids": [
+        727908,
+        671199,
+        1188740,
+        43812,
+        313843,
+        171388,
+        1479179,
+        66757,
+        301138,
+        1317896,
+        1907043,
+        2364885,
+        82846,
+        1758657,
+        1837608,
+        963872,
+        942866,
+        1088528,
+        2387896,
+        2312148
+      ],
+      "likes": {
+        "mapper:Marmowka": -0.1,
+        "_star_sum": 29.84,
+        "_star_cnt": 6.0,
+        "mapper:Pho": 0.4,
+        "mapper:Astronic": 0.4,
+        "mapper:Odaril": -0.5,
+        "mapper:Milan-": 0.4,
+        "mapper:moph": -0.5,
+        "mapper:Maaadbot": 0.4,
+        "mapper:CDFA": -0.5,
+        "mapper:Kudosu": -0.5,
+        "mapper:Sotarks": -0.1
+      },
+      "last": {
+        "beatmap_id": 5167194,
+        "set_id": 2387896,
+        "stars": 4.89,
+        "creator": "Sotarks",
+        "artist": "BABYMETAL",
+        "title": "from me to u (feat. Poppy) (Cut Ver.)",
+        "version": "Laurier's Insane"
+      },
+      "onboarded": true,
+      "genres": [
+        10,
+        4,
+        11,
+        6
+      ],
+      "ratings": [
+        {
+          "set_id": 727908,
+          "beatmap_id": 1558497,
+          "genre_id": 10,
+          "stars": 4.66,
+          "bpm": 174.0,
+          "creator": "Marmowka",
+          "liked": true
+        },
+        {
+          "set_id": 671199,
+          "beatmap_id": 1420861,
+          "genre_id": 4,
+          "stars": 4.99,
+          "bpm": 200.0,
+          "creator": "Pho",
+          "liked": true
+        },
+        {
+          "set_id": 1188740,
+          "beatmap_id": 2477067,
+          "genre_id": 11,
+          "stars": 5.0,
+          "bpm": 182.0,
+          "creator": "Astronic",
+          "liked": true
+        },
+        {
+          "set_id": 43812,
+          "beatmap_id": 137405,
+          "genre_id": 6,
+          "stars": 4.32,
+          "bpm": 116.0,
+          "creator": "Odaril",
+          "liked": false
+        },
+        {
+          "set_id": 313843,
+          "beatmap_id": 700546,
+          "genre_id": 10,
+          "stars": 4.03,
+          "bpm": 174.0,
+          "creator": "Milan-",
+          "liked": true
+        },
+        {
+          "set_id": 171388,
+          "beatmap_id": 612705,
+          "genre_id": 4,
+          "stars": 4.32,
+          "bpm": 190.0,
+          "creator": "moph",
+          "liked": false
+        },
+        {
+          "set_id": 1479179,
+          "beatmap_id": 3211514,
+          "genre_id": 11,
+          "stars": 6.27,
+          "bpm": 184.0,
+          "creator": "Maaadbot",
+          "liked": true
+        },
+        {
+          "set_id": 66757,
+          "beatmap_id": 220411,
+          "genre_id": 6,
+          "stars": 3.5,
+          "bpm": 135.0,
+          "creator": "CDFA",
+          "liked": false
+        },
+        {
+          "set_id": 301138,
+          "beatmap_id": 675330,
+          "genre_id": 10,
+          "stars": 4.78,
+          "bpm": 87.0,
+          "creator": "Marmowka",
+          "liked": false
+        },
+        {
+          "set_id": 1317896,
+          "beatmap_id": 2730458,
+          "genre_id": 4,
+          "stars": 4.7,
+          "bpm": 144.0,
+          "creator": "Kudosu",
+          "liked": false
+        },
+        {
+          "set_id": 2387896,
+          "beatmap_id": 5167194,
+          "genre_id": 11,
+          "stars": 4.89,
+          "bpm": 200.0,
+          "creator": "Sotarks",
+          "liked": true
+        },
+        {
+          "set_id": 2312148,
+          "beatmap_id": 4947081,
+          "genre_id": 11,
+          "stars": 4.97,
+          "bpm": 240.0,
+          "creator": "Sotarks",
+          "liked": false
+        }
+      ]
+    }
+  }
+}

@@ -9,11 +9,12 @@ from pathlib import Path
 
 from .commands import BotContext, handle_message
 from .config import Config, ConfigError
+from .db import Database
 from .irc_client import IncomingMessage, IrcClient
 from .osu_api import OsuApi
 from .pp import PpCalculator
 from .recommender import Recommender
-from .store import Store
+from .store import Store, migrate_json_file
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -27,10 +28,13 @@ def _setup_logging(verbose: bool) -> None:
         logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
-def _build_context(config: Config) -> tuple[OsuApi, BotContext]:
+async def _build_context(config: Config) -> tuple[OsuApi, Database, BotContext]:
+    db = Database(config.database.dsn)
+    await db.connect()
+    store = Store(db)
+    await migrate_json_file(store)
     api = OsuApi(config.api.client_id, config.api.client_secret)
     pp = PpCalculator()
-    store = Store()
     reco = Recommender(
         api, pp, store,
         star_window=config.bot.star_window,
@@ -42,10 +46,10 @@ def _build_context(config: Config) -> tuple[OsuApi, BotContext]:
             "rosu-pp-py not installed — recommendations will omit pp values. "
             "Run: pip install rosu-pp-py"
         )
-    return api, ctx
+    return api, db, ctx
 
 
-async def _api_sanity_check(api: OsuApi, config: Config) -> None:
+async def _api_sanity_check(api: OsuApi, db: Database, config: Config) -> None:
     log = logging.getLogger("spotiosu")
     try:
         me = await api.get_user(config.irc.username, mode=config.bot.default_mode)
@@ -54,6 +58,7 @@ async def _api_sanity_check(api: OsuApi, config: Config) -> None:
     except Exception as exc:  # noqa: BLE001
         log.error("osu! API check failed: %s", exc)
         await api.close()
+        await db.close()  # don't leak the pool when startup aborts
         raise
 
 
@@ -74,8 +79,8 @@ async def _run_console(config: Config) -> None:
     second account. Commands behave exactly like the chat bot's.
     """
     log = logging.getLogger("spotiosu")
-    api, ctx = _build_context(config)
-    await _api_sanity_check(api, config)
+    api, db, ctx = await _build_context(config)
+    await _api_sanity_check(api, db, config)
     peer = _ConsolePeer(config.irc.username)
 
     print(f"\nspotiosu console — recommendations for '{config.irc.username}'.")
@@ -98,13 +103,14 @@ async def _run_console(config: Config) -> None:
             await handle_message(msg, peer, ctx)  # type: ignore[arg-type]
     finally:
         await api.close()
+        await db.close()
         log.info("Console closed.")
 
 
 async def _run(config: Config) -> None:
     log = logging.getLogger("spotiosu")
-    api, ctx = _build_context(config)
-    await _api_sanity_check(api, config)
+    api, db, ctx = await _build_context(config)
+    await _api_sanity_check(api, db, config)
 
     irc = IrcClient(
         username=config.irc.username,
@@ -125,6 +131,7 @@ async def _run(config: Config) -> None:
     finally:
         await irc.stop()
         await api.close()
+        await db.close()
 
 
 def main(argv: list[str] | None = None) -> int:

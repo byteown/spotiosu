@@ -20,5 +20,8 @@
     "host": "127.0.0.1",
     "port": 8000,
     "public_base": "http://localhost:8000"
+  },
+  "database": {
+    "dsn": "postgresql://spotiosu:spotiosu@localhost:5432/spotiosu"
   }
 }
