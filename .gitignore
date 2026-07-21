@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 config.json
 data.json
+data.json.migrated
 .session_secret
+.env

@@ -37,15 +37,21 @@ SECRET_FILE = Path(".session_secret")
 ONBOARDING_TARGET = 10  # ratings required to finish the questionnaire
 
 
-def _session_secret() -> str:
-    """Load a persistent session-signing secret, creating one on first run."""
+def _session_secret(config: Config) -> str:
+    """Resolve the session-signing secret.
+
+    In production it comes from the environment so that redeploying the container
+    does not log everybody out. Locally we fall back to a generated file.
+    """
+    if config.web.session_secret:
+        return config.web.session_secret
     if SECRET_FILE.exists():
         return SECRET_FILE.read_text(encoding="utf-8").strip()
     secret = secrets.token_hex(32)
     try:
         SECRET_FILE.write_text(secret, encoding="utf-8")
     except OSError:
-        pass
+        log.warning("Could not persist %s - sessions will reset on restart", SECRET_FILE)
     return secret
 
 
@@ -69,8 +75,13 @@ def create_app(config: Config) -> FastAPI:
         await app.state.db.close()
 
     app = FastAPI(title="spotiosu", lifespan=lifespan)
-    app.add_middleware(SessionMiddleware, secret_key=_session_secret(),
-                       same_site="lax", https_only=False)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=_session_secret(config),
+        same_site="lax",              # required: osu! redirects back cross-site
+        https_only=config.web.secure_cookies,
+        max_age=14 * 24 * 3600,
+    )
 
     def _require_user(request: Request) -> dict:
         user = request.session.get("user")

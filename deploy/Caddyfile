@@ -1,0 +1,30 @@
+# Native Caddy config (installed to /etc/caddy/Caddyfile by setup-server.sh).
+# Caddy obtains and renews the Let's Encrypt certificate automatically and
+# redirects HTTP -> HTTPS on its own.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	@static path /static/*
+	header @static Cache-Control "public, max-age=3600"
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The app listens on loopback only; Caddy is the sole public entry point.
+	reverse_proxy 127.0.0.1:8000
+
+	log {
+		output file /var/log/caddy/spotiosu.log
+		format console
+	}
+}
+
+www.{$SITE_ADDRESS} {
+	redir https://{$SITE_ADDRESS}{uri} permanent
+}

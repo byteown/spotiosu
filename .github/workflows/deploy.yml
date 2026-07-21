@@ -1,0 +1,137 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ---------------------------------------------------------------- CI -------
+  ci:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Byte-compile all Python
+        run: python -m compileall -q bot webapp
+
+      - name: Check JavaScript syntax
+        run: node --check webapp/static/app.js
+
+      - name: Frontend element ids referenced by JS must exist in HTML
+        run: |
+          python - <<'PY'
+          import re, pathlib, sys
+          html = pathlib.Path("webapp/static/index.html").read_text(encoding="utf-8")
+          js = pathlib.Path("webapp/static/app.js").read_text(encoding="utf-8")
+          ids = set(re.findall(r'\bid="([^"]+)"', html))
+          refs = set(re.findall(r'\$\("([^"]+)"\)', js))
+          missing = sorted(refs - ids)
+          print(f"{len(ids)} ids in HTML, {len(refs)} referenced in JS")
+          if missing:
+              sys.exit(f"JS references missing elements: {missing}")
+          PY
+
+      - name: Config must load from environment alone (no config.json)
+        env:
+          SPOTIOSU_CLIENT_ID: "12345"
+          SPOTIOSU_CLIENT_SECRET: "dummy-secret"
+          SPOTIOSU_PUBLIC_BASE: "https://spotiosu.ru"
+          SPOTIOSU_DSN: "postgresql://u:p@127.0.0.1:5432/x"
+        run: |
+          python - <<'PY'
+          from bot.config import Config
+          cfg = Config.load("does-not-exist.json")
+          assert cfg.api.client_id == 12345, cfg.api.client_id
+          assert cfg.web.redirect_uri == "https://spotiosu.ru/auth/callback", cfg.web.redirect_uri
+          assert cfg.web.secure_cookies is True
+          print("config-from-env OK ->", cfg.web.redirect_uri)
+          PY
+
+      - name: App imports cleanly
+        run: python -c "import webapp.server, bot.main; print('imports OK')"
+
+      - name: End-to-end against a real PostgreSQL
+        env:
+          SPOTIOSU_DSN: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: python .github/scripts/db_smoke.py
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+  # ------------------------------------------------------------- deploy ------
+  deploy:
+    name: Deploy to server
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${{ secrets.SSH_PORT || 22 }}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Sync application code
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          rsync -az --delete \
+            --exclude '__pycache__' \
+            -e "ssh -i ~/.ssh/id_deploy -p ${{ secrets.SSH_PORT || 22 }}" \
+            bot webapp requirements.txt \
+            "$SSH_USER@$SSH_HOST:/opt/spotiosu/app/"
+
+      - name: Install dependencies and restart
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "${{ secrets.SSH_PORT || 22 }}" \
+            "$SSH_USER@$SSH_HOST" bash -euo pipefail <<'EOF'
+          cd /opt/spotiosu
+          ./venv/bin/pip install -q --upgrade -r app/requirements.txt
+          sudo /usr/bin/systemctl restart spotiosu
+          sleep 3
+          sudo /usr/bin/systemctl status spotiosu --no-pager -l | head -15
+          EOF
+
+      - name: Verify the site is up
+        run: |
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://spotiosu.ru/api/state || true)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then echo "deploy verified"; exit 0; fi
+            sleep 10
+          done
+          echo "site did not become healthy after deploy"
+          exit 1
