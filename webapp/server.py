@@ -29,6 +29,7 @@ from bot.recommender import Recommender
 from bot.store import Store, migrate_json_file
 
 from . import oauth
+from .palette import AccentCache
 
 log = logging.getLogger("spotiosu.web")
 
@@ -200,6 +201,7 @@ def create_app(config: Config) -> FastAPI:
             candidate_pages=config.bot.candidate_pages,
             seen_limit=config.bot.recent_seen_limit,
         )
+        app.state.accents = AccentCache(app.state.api)
         log.info("spotiosu web ready at %s", config.web.public_base)
         yield
         await app.state.api.close()
@@ -388,6 +390,18 @@ def create_app(config: Config) -> FastAPI:
         pp = await request.app.state.reco.compute_pp(beatmap_id, mods_bits)
         return {"beatmap_id": beatmap_id,
                 "pp": {str(int(k)): v for k, v in (pp or {}).items()}}
+
+    @app.get("/api/accent")
+    async def api_accent(request: Request, set_id: int):
+        """The accent colour for one beatmapset's artwork.
+
+        Extracted here rather than in the browser because the osu! CDN sends no
+        CORS header, which makes a canvas that draws the cover unreadable. Like
+        /api/pp this is fetched per track and prefetched for the next one.
+        """
+        _require_user(request)
+        accents = await request.app.state.accents.get(set_id)
+        return {"set_id": set_id, **accents}
 
     @app.get("/api/profile/stats")
     async def api_profile_stats(request: Request):

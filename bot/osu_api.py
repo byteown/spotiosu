@@ -15,6 +15,7 @@ import httpx
 TOKEN_URL = "https://osu.ppy.sh/oauth/token"
 API_BASE = "https://osu.ppy.sh/api/v2"
 OSU_FILE_URL = "https://osu.ppy.sh/osu/{beatmap_id}"
+COVER_URL = "https://assets.ppy.sh/beatmaps/{set_id}/covers/list.jpg"
 
 # osu! ruleset id <-> name
 MODE_TO_RULESET = {"osu": 0, "taiko": 1, "fruits": 2, "mania": 3}
@@ -121,6 +122,20 @@ class OsuApi:
             params.update(extra)
         data = await self._get("/beatmapsets/search", params=params)
         return data or {"beatmapsets": []}
+
+    async def download_cover(self, set_id: int) -> bytes | None:
+        """Fetch the small `list` cover for a beatmapset (~9 KB).
+
+        Only used to derive an accent colour, so the 150x100 variant is plenty -
+        `cover@2x` is roughly 18x larger for no benefit.
+        """
+        try:
+            resp = await self._http.get(COVER_URL.format(set_id=set_id))
+        except httpx.HTTPError:
+            return None
+        if resp.status_code != 200 or not resp.content:
+            return None
+        return resp.content
 
     async def download_osu_file(self, beatmap_id: int) -> str | None:
         """Fetch the raw .osu file text for a beatmap (used for pp calculation)."""

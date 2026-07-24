@@ -3,6 +3,7 @@
 const $ = (id) => document.getElementById(id);
 const DEFAULT_VOLUME = 0.20;          // preview always starts at 20%
 const AUTOPLAY_KEY = "spotiosu.autoplay";  // off unless the user opts in
+const FILTERS_KEY = "spotiosu.filtersOpen";
 
 const S = {
   user: null,
@@ -16,8 +17,11 @@ const S = {
   pending: null,   // in-flight prefetch promise
   busy: false,
   autoplay: false, // off by default; toggled by the checkbox under the player
+  filtersOpen: false,
   filters: { auto: true, min: 3, max: 6, mods: "" },
 };
+
+try { S.filtersOpen = localStorage.getItem(FILTERS_KEY) === "1"; } catch (_) {}
 
 // ============================ boot ============================
 async function init() {
@@ -144,14 +148,16 @@ async function startOnboardingRating() {
   $("stage-view").classList.remove("hidden");
   $("onboard-bar").classList.remove("hidden");
   $("filters").classList.add("hidden");
+  $("filters-toggle").classList.add("hidden");  // no tuning mid-questionnaire
   updateProgress();
   await loadQueue();
   render();
 }
 
 function updateProgress() {
-  const pct = Math.min(100, (S.rated / S.target) * 100);
-  $("ob-fill").style.width = pct + "%";
+  const pct = Math.min(1, S.rated / S.target);
+  // scaleX, not width: animating width relayouts the bar on every frame.
+  $("ob-fill").style.transform = `scaleX(${pct})`;
   $("ob-count").textContent = `${Math.min(S.rated, S.target)} / ${S.target}`;
 }
 
@@ -169,9 +175,29 @@ async function startMain() {
   $("nav").classList.remove("hidden");
   $("stage-view").classList.remove("hidden");
   $("onboard-bar").classList.add("hidden");
-  $("filters").classList.remove("hidden");
+  $("filters-toggle").classList.remove("hidden");
+  applyFiltersOpen(S.filtersOpen);
   await loadQueue();
   render();
+}
+
+/* Filters are a tool, not the headline, so they start collapsed and the choice
+   is remembered. The toggle carries a summary so the state is legible closed. */
+function applyFiltersOpen(open) {
+  S.filtersOpen = open;
+  $("filters").classList.toggle("hidden", !open);
+  $("filters-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+  try { localStorage.setItem(FILTERS_KEY, open ? "1" : "0"); } catch (_) {}
+  updateFiltersSummary();
+}
+
+function updateFiltersSummary() {
+  const bits = [];
+  bits.push(S.filters.auto
+    ? t("f_auto_value")
+    : `★ ${(+S.filters.min).toFixed(1)}–${(+S.filters.max).toFixed(1)}`);
+  if (S.filters.mods) bits.push("+" + S.filters.mods);
+  $("filters-summary").textContent = "· " + bits.join(" · ");
 }
 
 // ============================ queue ============================
@@ -246,8 +272,17 @@ function render() {
   $("stage-empty").classList.add("hidden");
   $("stage").classList.remove("hidden");
 
-  $("art").src = rec.cover_url || "";
-  $("stage-bg").style.backgroundImage = rec.cover_url ? `url("${rec.cover_url}")` : "none";
+  // Searching the whole listing turns up sets whose cover 404s, so the image is
+  // shown only once it has actually decoded - otherwise the frame keeps its own
+  // surface and the title still reads, instead of a broken-image icon.
+  const art = $("art");
+  art.classList.add("hidden");
+  if (rec.cover_url) art.src = rec.cover_url;
+  else art.removeAttribute("src");
+
+  const bg = $("stage-bg");
+  bg.style.backgroundImage = rec.cover_url ? `url("${rec.cover_url}")` : "none";
+  bg.classList.toggle("on", Boolean(rec.cover_url));
   $("t-title").textContent = rec.title;
   $("t-artist").textContent = rec.artist;
   const sub = [`[${rec.version}]`, `${t("mapped_by")} ${rec.creator}`];
@@ -259,8 +294,43 @@ function render() {
   loadPreview(rec);
 
   ensurePp(rec);      // fills the pp badge in once it arrives
-  preloadNext();      // cover + pp of the following track
+  ensureAccent(rec);  // recolours the interface from this cover
+  preloadNext();      // cover, pp and accent of the following track
   maybePrefetch();
+}
+
+/* The interface takes its colour from the current artwork. Extraction happens
+   server-side because the osu! CDN sends no CORS header, which makes a canvas
+   that has drawn a cover unreadable. Cached and prefetched exactly like pp. */
+const BRAND = { accent: "#ff66aa", accent_text: "#ff66aa", on_accent: "#14060d" };
+
+function paint(colours) {
+  const root = document.documentElement.style;
+  root.setProperty("--accent", colours.accent);
+  root.setProperty("--accent-text", colours.accent_text);
+  root.setProperty("--on-accent", colours.on_accent);
+}
+
+async function ensureAccent(rec) {
+  if (!rec) return;
+  if (rec.accent) { if (current() === rec) paint(rec.accent); return; }
+  if (rec._accentPending) return;
+  rec._accentPending = true;
+  try {
+    const res = await fetch(`/api/accent?set_id=${rec.set_id}`);
+    rec.accent = res.ok ? await res.json() : BRAND;
+  } catch (_) {
+    rec.accent = BRAND;
+  } finally {
+    rec._accentPending = false;
+  }
+  // The user may have rated, or switched to the profile, while this was in
+  // flight - the profile deliberately does not wear a track's colour.
+  if (current() === rec && onPlayer()) paint(rec.accent);
+}
+
+function onPlayer() {
+  return !$("stage-view").classList.contains("hidden");
 }
 
 function renderBadges(rec) {
@@ -303,6 +373,7 @@ function preloadNext() {
   if (!next) return;
   if (next.cover_url) new Image().src = next.cover_url;
   ensurePp(next);
+  ensureAccent(next);
 }
 
 // Try to hand the beatmap straight to osu!lazer via its `osu://` URL scheme.
@@ -359,6 +430,15 @@ function setPlayIcon(playing) {
 function fmtTime(s) {
   if (!isFinite(s)) return "0:00";
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+}
+
+function wireArt() {
+  const art = $("art");
+  art.onload = () => art.classList.remove("hidden");
+  art.onerror = () => {
+    art.classList.add("hidden");
+    $("stage-bg").classList.remove("on");   // the backdrop uses the same file
+  };
 }
 
 function wireAudio() {
@@ -460,7 +540,10 @@ document.addEventListener("keydown", (e) => {
 function updateRangeLabel() {
   $("range-label").textContent = S.filters.auto
     ? t("f_auto_value") : `★ ${(+S.filters.min).toFixed(1)} – ${(+S.filters.max).toFixed(1)}`;
+  updateFiltersSummary();
 }
+
+$("filters-toggle").onclick = () => applyFiltersOpen(!S.filtersOpen);
 
 function readSliders() {
   let lo = parseFloat($("min-stars").value);
@@ -508,6 +591,8 @@ function showPlayer() {
   $("nav-profile").classList.remove("on");
   $("profile-view").classList.add("hidden");
   $("stage-view").classList.remove("hidden");
+  paint(current()?.accent || BRAND);
+  $("stage-bg").classList.toggle("on", Boolean(current()?.cover_url));
 }
 
 async function showProfile() {
@@ -518,6 +603,10 @@ async function showProfile() {
   $("stage-view").classList.add("hidden");
   $("genres-view").classList.add("hidden");
   $("profile-view").classList.remove("hidden");
+  // This page is about a taste, not about one map, so it drops the track's
+  // colour and the artwork behind it.
+  paint(BRAND);
+  $("stage-bg").classList.remove("on");
 
   let data;
   try {
@@ -548,7 +637,8 @@ function renderProfile(d) {
 
   const empty = !tot.rated;
   $("profile-empty").classList.toggle("hidden", !empty);
-  document.querySelectorAll(".chart-card").forEach((c) => c.classList.toggle("hidden", empty));
+  document.querySelectorAll(".chart-block, .stat-row")
+    .forEach((c) => c.classList.toggle("hidden", empty));
   if (empty) return;
 
   renderGenreChart(d.genres || []);
@@ -649,6 +739,7 @@ function esc(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+wireArt();
 wireAudio();
 updateRangeLabel();
 init();

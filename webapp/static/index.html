@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/favicon/apple-touch-icon.png" />
   <link rel="manifest" href="/static/favicon/site.webmanifest" />
   <meta name="apple-mobile-web-app-title" content="spotiosu" />
-  <meta name="theme-color" content="#0e0e12" />
+  <meta name="theme-color" content="#0c0c11" />
   <meta name="description" content="Beatmap recommendations built from your music taste and your osu! skill level." />
 
   <link rel="stylesheet" href="/static/fonts.css" />
@@ -23,44 +23,59 @@
 
 <!-- ============ Login ============ -->
 <section id="login" class="hidden">
-  <div class="login-card">
-    <h1>spoti<span class="accent">osu</span></h1>
-    <p data-i18n="login_tagline">Beatmap recommendations built from your music taste and your skill level.</p>
-    <a class="btn-osu" href="/login" data-i18n="login_signin">Sign in with osu!</a>
-    <p id="login-error" class="error hidden"></p>
-    <button class="lang-btn lang-btn-login" type="button"></button>
+  <div class="login-field" aria-hidden="true"></div>
+  <div class="login-copy">
+    <h1 class="wordmark">spoti<span class="accent">osu</span></h1>
+    <p class="login-tagline" data-i18n="login_tagline">Beatmap recommendations built from
+      your music taste and your skill level.</p>
+    <div class="login-actions">
+      <a class="btn-osu" href="/login" data-i18n="login_signin">Sign in with osu!</a>
+      <button class="lang-btn" type="button"></button>
+    </div>
+    <p id="login-error" class="error hidden" role="alert"></p>
   </div>
 </section>
 
 <!-- ============ App shell ============ -->
 <div id="shell" class="hidden">
+  <!-- The current cover, blurred, is the page's whole background. It sits at the
+       shell level rather than inside the stage so the topbar floats over it too. -->
+  <div id="stage-bg" class="stage-bg" aria-hidden="true"></div>
+
   <header class="topbar">
     <div class="brand">spoti<span class="accent">osu</span></div>
-    <nav id="nav" class="nav hidden">
+
+    <nav id="nav" class="nav hidden" aria-label="Sections">
       <button id="nav-player" class="nav-btn on" data-i18n="nav_player">Player</button>
       <button id="nav-profile" class="nav-btn" data-i18n="nav_profile">Profile</button>
     </nav>
-    <div class="profile">
+
+    <div class="topbar-end">
       <button class="lang-btn" type="button"></button>
       <a id="donate" class="btn-donate hidden" target="_blank" rel="noopener"
          data-i18n="donate">♥ Support</a>
-      <img id="avatar" class="avatar" alt="" />
-      <div class="profile-meta">
-        <div id="username" class="username"></div>
-        <div id="stats" class="stats"></div>
+      <div class="who">
+        <img id="avatar" class="avatar" alt=""
+             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
+        <div class="who-meta">
+          <div id="username" class="username"></div>
+          <div id="stats" class="stats"></div>
+        </div>
       </div>
-      <button id="reonboard" class="btn-ghost"
-              data-i18n="retake" data-i18n-title="retake_title">Retake quiz</button>
-      <button id="logout" class="btn-ghost" data-i18n="logout">Log out</button>
+      <div class="topbar-menu">
+        <button id="reonboard" class="btn-ghost"
+                data-i18n="retake" data-i18n-title="retake_title">Retake quiz</button>
+        <button id="logout" class="btn-ghost" data-i18n="logout">Log out</button>
+      </div>
     </div>
   </header>
 
   <!-- ---- Onboarding step 1: genres ---- -->
-  <section id="genres-view" class="hidden">
+  <section id="genres-view" class="view hidden">
     <div class="wizard">
-      <div class="step-label" data-i18n="step1">Step 1 of 2</div>
-      <h2 data-i18n="q_title">What music do you like?</h2>
-      <p class="muted" data-i18n="q_sub">Pick at least 2 genres. We'll play you songs from
+      <p class="step-label" data-i18n="step1">Step 1 of 2</p>
+      <h2 class="wizard-title" data-i18n="q_title">What music do you like?</h2>
+      <p class="wizard-sub" data-i18n="q_sub">Pick at least 2 genres. We'll play you songs from
         them and learn your taste from your ratings.</p>
       <div id="genre-grid" class="genre-grid"></div>
       <button id="genres-continue" class="btn-primary" disabled data-i18n="continue">Continue</button>
@@ -68,12 +83,12 @@
   </section>
 
   <!-- ---- Player stage (used for onboarding ratings AND recommendations) ---- -->
-  <section id="stage-view" class="hidden">
+  <section id="stage-view" class="view hidden">
 
     <div id="onboard-bar" class="onboard-bar hidden">
-      <div>
-        <div class="step-label" data-i18n="step2">Step 2 of 2</div>
-        <div class="ob-text" data-i18n="ob_text">Listen and rate — this builds your recommendations</div>
+      <div class="ob-copy">
+        <p class="step-label" data-i18n="step2">Step 2 of 2</p>
+        <p class="ob-text" data-i18n="ob_text">Listen and rate — this builds your recommendations</p>
       </div>
       <div class="ob-progress">
         <div class="progress"><div id="ob-fill" class="progress-fill"></div></div>
@@ -81,44 +96,74 @@
       </div>
     </div>
 
-    <div id="filters" class="filters hidden">
-      <div class="filter-group">
-        <label data-i18n="f_difficulty">Difficulty</label>
-        <div class="range-row">
-          <input id="min-stars" type="range" min="1" max="10" step="0.1" value="3" />
-          <span id="range-label" class="range-label">auto</span>
-          <input id="max-stars" type="range" min="1" max="10" step="0.1" value="6" />
+    <!-- Filters are a tool, not the headline: collapsed until asked for, so the
+         first thing on screen is always a track. -->
+    <div class="filter-shell">
+      <button id="filters-toggle" class="filters-toggle hidden" type="button"
+              aria-expanded="false" aria-controls="filters">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true">
+          <path d="M4 6h16M7 12h10M10 18h4" />
+        </svg>
+        <span data-i18n="f_panel">Filters</span>
+        <span id="filters-summary" class="filters-summary"></span>
+      </button>
+
+      <div id="filters" class="filters hidden">
+        <div class="filter-group">
+          <label class="filter-label" for="min-stars" data-i18n="f_difficulty">Difficulty</label>
+          <div class="range-row">
+            <input id="min-stars" type="range" min="1" max="10" step="0.1" value="3" />
+            <span id="range-label" class="range-label">auto</span>
+            <input id="max-stars" type="range" min="1" max="10" step="0.1" value="6" />
+          </div>
+        </div>
+        <label class="check"><input id="auto-diff" type="checkbox" checked />
+          <span data-i18n="f_auto">Match my skill</span></label>
+        <input id="mods" class="mods-input" data-i18n-ph="f_mods_ph"
+               placeholder="mods (e.g. HDDT)" autocomplete="off" />
+        <div class="filter-actions">
+          <button id="apply-filters" class="btn-primary btn-sm" data-i18n="f_apply">Apply</button>
+          <button id="reset-history" class="btn-ghost"
+                  data-i18n="f_reset" data-i18n-title="f_reset_title">Reset history</button>
         </div>
       </div>
-      <label class="check"><input id="auto-diff" type="checkbox" checked />
-        <span data-i18n="f_auto">Match my skill</span></label>
-      <input id="mods" class="mods-input" data-i18n-ph="f_mods_ph"
-             placeholder="mods (e.g. HDDT)" autocomplete="off" />
-      <button id="apply-filters" class="btn-ghost" data-i18n="f_apply">Apply</button>
-      <button id="reset-history" class="btn-ghost"
-              data-i18n="f_reset" data-i18n-title="f_reset_title">Reset history</button>
     </div>
 
     <div id="stage" class="stage hidden">
-      <div id="stage-bg" class="stage-bg"></div>
-      <div class="stage-inner">
-        <img id="art" class="art" alt="" />
+      <!-- The title lives *on* the artwork, over its own scrim, so the cover is
+           the headline rather than an illustration next to one. -->
+      <div class="cover-frame">
+        <img id="art" class="art" alt=""
+             src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" />
         <div class="meta">
-          <div id="t-title" class="t-title"></div>
-          <div id="t-artist" class="t-artist"></div>
-          <div id="t-sub" class="t-sub"></div>
-          <div id="t-badges" class="badges"></div>
+          <h2 id="t-title" class="t-title"></h2>
+          <p id="t-artist" class="t-artist"></p>
+          <p id="t-sub" class="t-sub"></p>
         </div>
+      </div>
 
-        <div class="seekrow">
-          <span id="t-cur" class="time">0:00</span>
-          <input id="seek" class="seek" type="range" min="0" max="100" value="0" />
-          <span id="t-dur" class="time">0:00</span>
-        </div>
+      <div id="t-badges" class="badges"></div>
 
+      <div class="seekrow">
+        <span id="t-cur" class="time">0:00</span>
+        <input id="seek" class="seek" type="range" min="0" max="100" value="0"
+               aria-label="Seek" />
+        <span id="t-dur" class="time">0:00</span>
+      </div>
+
+      <!-- Volume left, rating centred on the page, secondary links right. -->
+      <div class="control-band">
         <div class="volrow">
-          <span class="vol-icon" aria-hidden="true">🔊</span>
-          <input id="vol" class="vol" type="range" min="0" max="100" value="20" />
+          <svg class="vol-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z" />
+            <path d="M15.4 8.4a4.6 4.6 0 0 1 0 7.2" fill="none" stroke="currentColor"
+                  stroke-width="1.9" stroke-linecap="round" />
+            <path d="M18 5.9a8 8 0 0 1 0 12.2" fill="none" stroke="currentColor"
+                  stroke-width="1.9" stroke-linecap="round" />
+          </svg>
+          <input id="vol" class="vol" type="range" min="0" max="100" value="20"
+                 aria-label="Volume" />
           <span id="vol-label" class="vol-label">20%</span>
         </div>
 
@@ -146,16 +191,18 @@
           </button>
         </div>
 
-        <label class="check autoplay-row">
-          <input id="autoplay" type="checkbox" />
-          <span data-i18n="autoplay">Autoplay previews</span>
-        </label>
-
-        <a id="open-osu" class="open-link" target="_blank" rel="noopener"
-           data-i18n="open_osu">Open in osu! →</a>
-        <div class="hint" data-i18n-html="hint">You must rate to continue —
-          <b>←</b> dislike · <b>space</b> play/pause · <b>→</b> like</div>
+        <div class="track-foot">
+          <label class="check">
+            <input id="autoplay" type="checkbox" />
+            <span data-i18n="autoplay">Autoplay previews</span>
+          </label>
+          <a id="open-osu" class="open-link" target="_blank" rel="noopener"
+             data-i18n="open_osu">Open in osu! →</a>
+        </div>
       </div>
+
+      <p class="hint" data-i18n-html="hint">You must rate to continue —
+        <b>←</b> dislike · <b>space</b> play/pause · <b>→</b> like</p>
     </div>
 
     <div id="stage-loading" class="stage-msg hidden">
@@ -165,51 +212,51 @@
   </section>
 
   <!-- ---- Profile: what we learned about your taste ---- -->
-  <section id="profile-view" class="hidden">
+  <section id="profile-view" class="view hidden">
     <div class="profile-page">
 
       <div class="taste-hero">
-        <div class="hero-label" data-i18n="your_taste">Your taste</div>
-        <div id="taste-line" class="hero-line">—</div>
-        <div id="taste-sub" class="hero-sub"></div>
+        <p class="hero-label" data-i18n="your_taste">Your taste</p>
+        <h2 id="taste-line" class="hero-line">—</h2>
+        <p id="taste-sub" class="hero-sub"></p>
       </div>
 
-      <div class="tiles">
-        <div class="tile"><div id="t-rated" class="tile-value">0</div>
-          <div class="tile-label" data-i18n="tile_rated">tracks rated</div></div>
-        <div class="tile"><div id="t-liked" class="tile-value">0</div>
-          <div class="tile-label" data-i18n="tile_liked">liked</div></div>
-        <div class="tile"><div id="t-rate" class="tile-value">0%</div>
-          <div class="tile-label" data-i18n="tile_rate">like rate</div></div>
-        <div class="tile"><div id="t-bpm" class="tile-value">0</div>
-          <div class="tile-label" data-i18n="tile_bpm">typical BPM</div></div>
-      </div>
+      <!-- A measured row, not four boxes: the numbers belong to one sentence
+           about the same person, so they share one rule instead of four cards. -->
+      <dl class="stat-row">
+        <div class="stat"><dt data-i18n="tile_rated">tracks rated</dt><dd id="t-rated">0</dd></div>
+        <div class="stat"><dt data-i18n="tile_liked">liked</dt><dd id="t-liked">0</dd></div>
+        <div class="stat"><dt data-i18n="tile_rate">like rate</dt><dd id="t-rate">0%</dd></div>
+        <div class="stat"><dt data-i18n="tile_bpm">typical BPM</dt><dd id="t-bpm">0</dd></div>
+      </dl>
 
-      <figure class="chart-card">
-        <figcaption class="chart-title" data-i18n="c_genre">Genre affinity</figcaption>
-        <p class="chart-note" data-i18n="c_genre_note">How many maps of each genre you kept versus skipped.</p>
-        <div class="legend">
-          <span class="legend-item"><i class="swatch pos"></i><span data-i18n="legend_liked">Liked</span></span>
-          <span class="legend-item"><i class="swatch neg"></i><span data-i18n="legend_disliked">Disliked</span></span>
-        </div>
-        <div id="genre-chart" class="chart"></div>
-      </figure>
+      <div class="chart-grid">
+        <figure class="chart-block wide">
+          <figcaption class="chart-title" data-i18n="c_genre">Genre affinity</figcaption>
+          <p class="chart-note" data-i18n="c_genre_note">How many maps of each genre you kept versus skipped.</p>
+          <div class="legend">
+            <span class="legend-item"><i class="swatch pos"></i><span data-i18n="legend_liked">Liked</span></span>
+            <span class="legend-item"><i class="swatch neg"></i><span data-i18n="legend_disliked">Disliked</span></span>
+          </div>
+          <div id="genre-chart" class="chart"></div>
+        </figure>
 
-      <figure class="chart-card">
-        <figcaption class="chart-title" data-i18n="c_diff">Difficulty you enjoy</figcaption>
-        <p class="chart-note" data-i18n="c_diff_note">Liked maps, grouped into half-star steps.</p>
-        <div id="diff-chart" class="chart"></div>
-      </figure>
+        <figure class="chart-block">
+          <figcaption class="chart-title" data-i18n="c_diff">Difficulty you enjoy</figcaption>
+          <p class="chart-note" data-i18n="c_diff_note">Liked maps, grouped into half-star steps.</p>
+          <div id="diff-chart" class="chart"></div>
+        </figure>
 
-      <figure class="chart-card">
-        <figcaption class="chart-title" data-i18n="c_mappers">Favourite mappers</figcaption>
-        <p class="chart-note" data-i18n="c_mappers_note">Mappers whose maps you liked most often.</p>
-        <div id="mapper-chart" class="chart"></div>
-      </figure>
+        <figure class="chart-block">
+          <figcaption class="chart-title" data-i18n="c_mappers">Favourite mappers</figcaption>
+          <p class="chart-note" data-i18n="c_mappers_note">Mappers whose maps you liked most often.</p>
+          <div id="mapper-chart" class="chart"></div>
+        </figure>
 
-      <div class="chart-card">
-        <div class="chart-title" data-i18n="c_recent">Recently liked</div>
-        <div id="recent-likes" class="recent-grid"></div>
+        <section class="chart-block wide">
+          <h3 class="chart-title" data-i18n="c_recent">Recently liked</h3>
+          <div id="recent-likes" class="recent-grid"></div>
+        </section>
       </div>
 
       <div id="profile-empty" class="stage-msg hidden" data-i18n="profile_empty">

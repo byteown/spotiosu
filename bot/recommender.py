@@ -97,7 +97,11 @@ class Recommendation:
     genre_name: str = ""
 
     def to_dict(self) -> dict:
-        return {
+        # `pp` is omitted entirely when it was not computed, rather than sent as
+        # {}. The player distinguishes "not asked yet" (missing -> it fetches from
+        # /api/pp) from "asked, unavailable" ({} -> it stops asking); an empty
+        # object for the first case silently disabled pp in the web player.
+        data = {
             "beatmap_id": self.beatmap_id,
             "set_id": self.set_id,
             "artist": self.artist,
@@ -109,13 +113,15 @@ class Recommendation:
             "length": self.length,
             "length_str": _fmt_len(self.length) if self.length else "",
             "mods": self.mods,
-            "pp": {str(int(k)): v for k, v in (self.pp or {}).items()},
             "url": self.url,
             "cover_url": self.cover_url,
             "preview_url": self.preview_url,
             "genre_id": self.genre_id,
             "genre_name": self.genre_name,
         }
+        if self.pp is not None:
+            data["pp"] = {str(int(k)): v for k, v in self.pp.items()}
+        return data
 
 
 def _cover_of(bset: dict) -> str:

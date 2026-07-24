@@ -35,6 +35,7 @@ const I18N = {
     step2: "Step 2 of 2",
     ob_text: "Listen and rate — this builds your recommendations",
 
+    f_panel: "Filters",
     f_difficulty: "Difficulty",
     f_auto: "Match my skill",
     f_auto_value: "auto",
@@ -121,6 +122,7 @@ const I18N = {
     step2: "Шаг 2 из 2",
     ob_text: "Слушай и оценивай — на этом строятся рекомендации",
 
+    f_panel: "Фильтры",
     f_difficulty: "Сложность",
     f_auto: "По моему уровню",
     f_auto_value: "авто",

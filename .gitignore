@@ -6,3 +6,8 @@ data.json
 data.json.migrated
 .session_secret
 .env
+
+# Per-machine Claude Code settings, including the impeccable design hook.
+# The skill itself (.claude/skills/) is shared; this file is not.
+.claude/settings.local.json
+.impeccable/config.local.json
