@@ -13,8 +13,8 @@
     "command_prefix": "!",
     "default_mode": "osu",
     "star_window": 0.7,
-    "recent_seen_limit": 400,
-    "candidate_pages": 2
+    "recent_seen_limit": 5000,
+    "candidate_pages": 1
   },
   "web": {
     "host": "127.0.0.1",

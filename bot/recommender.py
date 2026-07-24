@@ -25,7 +25,10 @@ log = logging.getLogger("spotiosu.reco")
 W_STAR = 1.0
 W_BPM = 0.35
 W_MAPPER = 0.5
-W_POP = 0.3
+# Popularity is a tie-breaker, not a driver: it only nudges away from the truly
+# dead uploads (broken audio, unfinished maps) that come with searching the whole
+# listing. At 0.1 against W_GENRE 1.2 it can never outrank musical taste.
+W_POP = 0.1
 W_GENRE = 1.2   # music taste is the primary signal once onboarding is done
 JITTER = 0.15
 
@@ -33,6 +36,30 @@ JITTER = 0.15
 GENRE_PICK_BONUS = 0.6
 GENRE_LIKE = 0.35
 GENRE_DISLIKE = -0.45
+
+# ---- searching the whole listing -------------------------------------------
+# The osu! search endpoint only ever hands back the first ~100 results of a given
+# ordering, so a *fixed* query means a fixed pool: the same most-played maps every
+# time, and once the user has seen them the feed is permanently empty. Instead we
+# probe random slices - a random ordering over a random upload year - which turn
+# out to be near-disjoint (measured: 0/50 overlap between most sorts, 0/50 between
+# years), so the reachable pool is effectively the entire listing.
+SEARCH_SORTS = [
+    "plays_desc", "favourites_desc", "rating_desc", "ranked_desc",
+    "updated_desc", "difficulty_desc", "difficulty_asc", "relevance_desc",
+    "artist_asc", "title_asc",
+]
+# "any" also covers loved and graveyard maps, which is where most of the *music*
+# lives - for the thin genres it is the difference between a dead end and a real
+# catalogue (Classical: 90 ranked sets vs 674 across all statuses).
+SEARCH_STATUS = "any"
+# ...with one exception: "work in progress" means the map genuinely is not
+# finished, so recommending it wastes the user's rating.
+SKIP_STATUSES = {"wip"}
+FIRST_YEAR = 2008           # nothing meaningful was uploaded before this
+PROBES_PER_GENRE = 2
+GENERAL_PROBES = 2          # untagged passes keep some serendipity
+MAX_CONCURRENT_SEARCHES = 6
 
 
 @dataclass
@@ -124,14 +151,17 @@ def _fmt_len(seconds: int) -> str:
 
 class Recommender:
     def __init__(self, api: OsuApi, pp: PpCalculator, store: Store, *,
-                 star_window: float = 0.7, candidate_pages: int = 2,
-                 profile_ttl: float = 300.0) -> None:
+                 star_window: float = 0.7, candidate_pages: int = 1,
+                 profile_ttl: float = 300.0, seen_limit: int = 5000) -> None:
         self._api = api
         self._pp = pp
         self._store = store
         self._star_window = star_window
         self._candidate_pages = candidate_pages
         self._profile_ttl = profile_ttl
+        # How many past sets to remember per user. Anything the list forgets can
+        # be recommended again, so it has to comfortably outlast normal use.
+        self._seen_limit = seen_limit
         self._profile_cache: dict[str, tuple[float, TasteProfile]] = {}
         # pp for a given (beatmap, mods) never changes, so it is worth keeping:
         # the .osu download behind it costs ~0.5s and is shared across users.
@@ -234,15 +264,37 @@ class Recommender:
         return {g: max(-1.0, min(1.5, w)) for g, w in weights.items()}
 
     async def preferred_genres(self, username: str, limit: int = 3) -> list[int]:
+        """The genres to search, strongest first.
+
+        Sampled by weight rather than taken strictly top-N: someone who likes five
+        genres should not be shown only three of them forever. The strongest are
+        still by far the likeliest to come up.
+        """
         weights = await self._genre_weights(username)
         positive = [(g, w) for g, w in weights.items() if w > 0]
         positive.sort(key=lambda kv: -kv[1])
-        return [g for g, _ in positive[:limit]]
+        if len(positive) <= limit:
+            return [g for g, _ in positive]
+
+        chosen: list[int] = []
+        pool = list(positive)
+        for _ in range(limit):
+            total = sum(w for _g, w in pool)
+            cut = random.uniform(0, total)
+            acc = 0.0
+            for i, (g, w) in enumerate(pool):
+                acc += w
+                if acc >= cut:
+                    chosen.append(g)
+                    pool.pop(i)
+                    break
+        return chosen
 
     # ---- recommendation -----------------------------------------------------
     async def _scored_candidates(
         self, username: str, user_id: int, mode: str, acronyms: list[str],
         min_stars: float | None = None, max_stars: float | None = None,
+        need: int = 1,
     ) -> tuple[TasteProfile, list[tuple[float, dict, dict]]]:
         profile = await self.build_profile(user_id, mode, username)
 
@@ -265,19 +317,39 @@ class Recommender:
 
         # An explicit filter is a promise to the user: honour it exactly, instead of
         # the small tolerance we allow when the band is only inferred from skill.
-        tolerance = 0.0 if (min_stars is not None or max_stars is not None) else 0.3
-        candidates = await self._gather_candidates(
-            profile, mode, low, high, await self.preferred_genres(username), tolerance
-        )
+        explicit = min_stars is not None or max_stars is not None
+        tolerance = 0.0 if explicit else 0.3
+        genres = await self.preferred_genres(username)
         seen = await self._store.get_seen(username)
         likes = await self._store.get_likes(username)
 
         scored: list[tuple[float, dict, dict]] = []
-        for bset, bm in candidates:
-            set_id = int(bset["id"])
-            if set_id in seen or set_id in profile.played_set_ids:
-                continue
-            scored.append((self._score(bset, bm, profile, likes), bset, bm))
+        picked: set[int] = set()
+
+        async def harvest(lo: float, hi: float) -> None:
+            for bset, bm in await self._gather_candidates(
+                profile, mode, lo, hi, genres, tolerance
+            ):
+                set_id = int(bset["id"])
+                if set_id in picked or set_id in seen or set_id in profile.played_set_ids:
+                    continue
+                picked.add(set_id)
+                scored.append((self._score(bset, bm, profile, likes), bset, bm))
+
+        await harvest(low, high)
+
+        # Running dry is a search problem, not a "there are no maps" problem: the
+        # probes are random, so simply drawing again lands on different slices of
+        # the listing. Only if that still fails do we loosen the difficulty band -
+        # and never when the user set one explicitly.
+        if len(scored) < need:
+            await harvest(low, high)
+        if len(scored) < need and not explicit:
+            for extra in (0.8, 2.0):
+                await harvest(max(0.0, low - extra), high + extra)
+                if len(scored) >= need:
+                    break
+
         scored.sort(key=lambda t: -t[0])
         return profile, scored
 
@@ -313,7 +385,7 @@ class Recommender:
         if not scored:
             return None
         _, bset, bm = scored[0]
-        await self._store.mark_seen(username, int(bset["id"]))
+        await self._store.mark_seen(username, int(bset["id"]), limit=self._seen_limit)
         pp = await self._compute_pp(int(bm["id"]), mods_bits)
         rec = self._make_rec(bset, bm, profile, acronyms, pp)
         await self._store.set_last(username, {
@@ -338,11 +410,12 @@ class Recommender:
         """
         acronyms, mods_bits = parse_mods(mod_string)
         profile, scored = await self._scored_candidates(
-            username, user_id, mode, acronyms, min_stars, max_stars
+            username, user_id, mode, acronyms, min_stars, max_stars, need=count
         )
         picks = scored[:count]
         await self._store.mark_seen_many(
-            username, [int(bset["id"]) for _, bset, _bm in picks]
+            username, [int(bset["id"]) for _, bset, _bm in picks],
+            limit=self._seen_limit,
         )
 
         pps: list[dict[float, float] | None] = [None] * len(picks)
@@ -384,9 +457,12 @@ class Recommender:
         if ruleset is not None:
             base["m"] = ruleset
 
+        # Ranked + most-played on purpose: the quiz asks "do you like this song?",
+        # which only works with music the user has a chance of recognising. Two
+        # pages so retaking the quiz does not replay the same ten tracks.
         genres = genres or [3, 10]  # sane default if somehow empty
         results = await asyncio.gather(
-            *(self._search_pages("", dict(base, g=g)) for g in genres),
+            *(self._search_pages("", dict(base, g=g), pages=2) for g in genres),
             return_exceptions=True,
         )
 
@@ -437,26 +513,56 @@ class Recommender:
                 best_dist, best_bm = dist, bm
         return best_bm
 
+    @staticmethod
+    def _probes(genres: list[int], base: dict) -> list[tuple[dict, int | None]]:
+        """Pick which slices of the listing to search this time round.
+
+        Each probe is (search params, upload year or None). The first probe for a
+        genre is unsliced so its strongest maps stay reachable; the rest are
+        pinned to a random year, which is what actually breaks us out of the
+        "first 100 by playcount" trap.
+        """
+        years = list(range(FIRST_YEAR, time.gmtime().tm_year + 1))
+
+        def slice_for(genre: int | None, first: bool) -> tuple[dict, int | None]:
+            extra = dict(base, s=SEARCH_STATUS, sort=random.choice(SEARCH_SORTS))
+            if genre is not None:
+                extra["g"] = genre
+            return extra, (None if first else random.choice(years))
+
+        probes: list[tuple[dict, int | None]] = []
+        for genre in genres:
+            for i in range(PROBES_PER_GENRE):
+                probes.append(slice_for(genre, first=i == 0))
+        for i in range(GENERAL_PROBES):
+            probes.append(slice_for(None, first=i == 0))
+        return probes
+
     async def _gather_candidates(
         self, profile: TasteProfile, mode: str, low: float, high: float,
         genres: list[int] | None = None, tolerance: float = 0.3,
     ) -> list[tuple[dict, dict]]:
         """Collect candidate (beatmapset, difficulty) pairs.
 
-        When the user has preferred genres we run one search per genre so their
-        taste actually drives what shows up, plus a general pass for variety.
+        Runs several probes per preferred genre so the user's taste drives what
+        shows up, plus untagged passes for variety. See SEARCH_SORTS on why the
+        probes are randomised rather than a single fixed query.
         """
-        query = f"stars>{low:.2f} stars<{high:.2f}"
+        band = f"stars>{low:.2f} stars<{high:.2f}"
         base: dict = {}
         ruleset = MODE_TO_RULESET.get(mode)
         if ruleset is not None:
             base["m"] = ruleset
 
-        searches: list[dict] = [dict(base, g=g) for g in (genres or [])]
-        searches.append(dict(base))  # untagged pass keeps some serendipity
+        sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
+
+        async def probe(extra: dict, year: int | None) -> list[dict]:
+            query = band if year is None else f"{band} created={year}"
+            async with sem:
+                return await self._search_pages(query, extra)
 
         results = await asyncio.gather(
-            *(self._search_pages(query, extra) for extra in searches),
+            *(probe(extra, year) for extra, year in self._probes(genres or [], base)),
             return_exceptions=True,
         )
 
@@ -470,6 +576,12 @@ class Recommender:
                 sid = int(bset.get("id") or 0)
                 if not sid or sid in seen_sets:
                     continue
+                if bset.get("status") in SKIP_STATUSES:
+                    continue
+                # Widening to every status turns up the occasional set with no
+                # audio; in a music player that is not a recommendation at all.
+                if not _preview_of(bset):
+                    continue
                 bm = self._pick_difficulty(
                     bset, profile.target_stars, mode, low, high, tolerance
                 )
@@ -478,11 +590,11 @@ class Recommender:
                     out.append((bset, bm))
         return out
 
-    async def _search_pages(self, query: str, extra: dict) -> list[dict]:
-        """Follow cursor pagination for one search, up to candidate_pages."""
+    async def _search_pages(self, query: str, extra: dict, pages: int = 0) -> list[dict]:
+        """Follow cursor pagination for one search, up to `pages` (default: config)."""
         sets: list[dict] = []
         cursor: str | None = None
-        for _ in range(self._candidate_pages):
+        for _ in range(pages or self._candidate_pages):
             page_extra = dict(extra)
             if cursor:
                 page_extra["cursor_string"] = cursor

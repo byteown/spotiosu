@@ -198,6 +198,7 @@ def create_app(config: Config) -> FastAPI:
             app.state.api, PpCalculator(), app.state.store,
             star_window=config.bot.star_window,
             candidate_pages=config.bot.candidate_pages,
+            seen_limit=config.bot.recent_seen_limit,
         )
         log.info("spotiosu web ready at %s", config.web.public_base)
         yield

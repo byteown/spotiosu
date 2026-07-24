@@ -39,8 +39,11 @@ class BotConfig:
     command_prefix: str = "!"
     default_mode: str = "osu"
     star_window: float = 0.7
-    recent_seen_limit: int = 400
-    candidate_pages: int = 2
+    # Sets remembered per user before the oldest may be shown again.
+    recent_seen_limit: int = 5000
+    # Pages fetched per search probe. The recommender fires ~8 probes at random
+    # slices of the listing, so one page each is already ~400 candidates.
+    candidate_pages: int = 1
 
 
 @dataclass
@@ -119,8 +122,8 @@ class Config:
             command_prefix=bot_raw.get("command_prefix", "!"),
             default_mode=bot_raw.get("default_mode", "osu"),
             star_window=float(bot_raw.get("star_window", 0.7)),
-            recent_seen_limit=int(bot_raw.get("recent_seen_limit", 400)),
-            candidate_pages=int(bot_raw.get("candidate_pages", 2)),
+            recent_seen_limit=int(bot_raw.get("recent_seen_limit", 5000)),
+            candidate_pages=int(bot_raw.get("candidate_pages", 1)),
         )
         web = WebConfig(
             host=_env("HOST") or web_raw.get("host", "127.0.0.1"),

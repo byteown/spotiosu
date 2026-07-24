@@ -39,6 +39,7 @@ async def _build_context(config: Config) -> tuple[OsuApi, Database, BotContext]:
         api, pp, store,
         star_window=config.bot.star_window,
         candidate_pages=config.bot.candidate_pages,
+        seen_limit=config.bot.recent_seen_limit,
     )
     ctx = BotContext(config, api, reco, store)
     if not pp.available:
