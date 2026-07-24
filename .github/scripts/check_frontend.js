@@ -54,10 +54,30 @@ const DICT = eval(i18nSrc.replace(/^"use strict";/, "") + "\n; I18N;");
 const used = new Set();
 for (const m of html.matchAll(/data-i18n(?:-html|-title|-ph)?="([^"]+)"/g)) used.add(m[1]);
 for (const m of app.matchAll(/\bt\("([a-z_0-9]+)"/g)) used.add(m[1]);
-// keys built by concatenation, e.g. t("verdict_" + verdict)
-["easier", "harder", "onpar"].forEach((k) => used.add("verdict_" + k));
-["chill", "mid", "fast", "breakneck"].forEach((k) => used.add("tempo_" + k));
-used.delete("verdict_"); used.delete("tempo_");
+// Keys built by concatenation, e.g. t("verdict_" + verdict). Where the suffixes
+// are declared in app.js they are read back from it, so adding a tier or a status
+// cannot quietly escape the parity check.
+const tierIds = [...app.matchAll(/\{\s*id:\s*"([a-z]+)",\s*min:/g)].map((m) => m[1]);
+const knownStatuses = app.match(/const known = \[([^\]]+)\]/);
+const statusIds = knownStatuses
+  ? [...knownStatuses[1].matchAll(/"([a-z]+)"/g)].map((m) => m[1]) : [];
+
+// These come from server vocabularies, so they stay listed here.
+const concat = {
+  verdict_: ["easier", "harder", "onpar"],
+  tempo_: ["chill", "mid", "fast", "breakneck"],
+  tier_: tierIds,
+  status_: statusIds,
+};
+const emptyLists = Object.entries(concat).filter(([, v]) => !v.length).map(([k]) => k);
+if (emptyLists.length) {
+  bad(`could not read suffixes for: ${emptyLists.join(", ")} — the regex in this `
+    + `script no longer matches app.js, so those keys are going unchecked`);
+}
+for (const [prefix, suffixes] of Object.entries(concat)) {
+  suffixes.forEach((s) => used.add(prefix + s));
+  used.delete(prefix);
+}
 
 const langs = Object.keys(DICT);
 const missingKeys = [];

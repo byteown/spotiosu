@@ -357,7 +357,8 @@ def create_app(config: Config) -> FastAPI:
     # ---- recommendations ----------------------------------------------------
     @app.get("/api/feed")
     async def api_feed(request: Request, count: int = 10, mods: str = "",
-                       min_stars: float | None = None, max_stars: float | None = None):
+                       min_stars: float | None = None, max_stars: float | None = None,
+                       unranked: int = 0):
         user = _require_user(request)
         reco = request.app.state.reco
         uname = user["username"]
@@ -365,6 +366,7 @@ def create_app(config: Config) -> FastAPI:
             uname, user["id"], user.get("mode", "osu"), mods or None,
             count=max(1, min(count, 30)),
             min_stars=min_stars, max_stars=max_stars,
+            include_unranked=bool(unranked),
         )
         profile = await reco.build_profile(user["id"], user.get("mode", "osu"), uname)
         return {

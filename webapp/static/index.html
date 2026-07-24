@@ -110,18 +110,29 @@
       </button>
 
       <div id="filters" class="filters hidden">
-        <div class="filter-group">
-          <label class="filter-label" for="min-stars" data-i18n="f_difficulty">Difficulty</label>
-          <div class="range-row">
-            <input id="min-stars" type="range" min="1" max="10" step="0.1" value="3" />
+        <!-- Difficulty is picked by name, not by two numeric handles: osu! already
+             gives every star range a name players know, and "from/to" made the
+             user set two values to express one idea. Adjacent tiers combine. -->
+        <div class="filter-group filter-wide">
+          <div class="filter-head">
+            <span class="filter-label" data-i18n="f_difficulty">Difficulty</span>
             <span id="range-label" class="range-label">auto</span>
-            <input id="max-stars" type="range" min="1" max="10" step="0.1" value="6" />
+          </div>
+          <div id="tier-row" class="tier-row"></div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label" data-i18n="f_more">More</span>
+          <div class="filter-line">
+            <input id="mods" class="mods-input" data-i18n-ph="f_mods_ph"
+                   placeholder="mods (e.g. HDDT)" autocomplete="off" />
+            <label class="check" data-i18n-title="f_unranked_title">
+              <input id="unranked" type="checkbox" />
+              <span data-i18n="f_unranked">Include unranked maps</span>
+            </label>
           </div>
         </div>
-        <label class="check"><input id="auto-diff" type="checkbox" checked />
-          <span data-i18n="f_auto">Match my skill</span></label>
-        <input id="mods" class="mods-input" data-i18n-ph="f_mods_ph"
-               placeholder="mods (e.g. HDDT)" autocomplete="off" />
+
         <div class="filter-actions">
           <button id="apply-filters" class="btn-primary btn-sm" data-i18n="f_apply">Apply</button>
           <button id="reset-history" class="btn-ghost"

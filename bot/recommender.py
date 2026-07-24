@@ -49,12 +49,16 @@ SEARCH_SORTS = [
     "updated_desc", "difficulty_desc", "difficulty_asc", "relevance_desc",
     "artist_asc", "title_asc",
 ]
-# "any" also covers loved and graveyard maps, which is where most of the *music*
-# lives - for the thin genres it is the difference between a dead end and a real
-# catalogue (Classical: 90 ranked sets vs 674 across all statuses).
-SEARCH_STATUS = "any"
-# ...with one exception: "work in progress" means the map genuinely is not
-# finished, so recommending it wastes the user's rating.
+# Which statuses to search. "leaderboard" is what a player means by "approved":
+# ranked + approved + qualified + loved. "any" additionally pulls in graveyard and
+# pending, which is where most of the *music* lives - for the thin genres it is the
+# difference between a dead end and a real catalogue (Classical: 92 approved sets
+# vs 674 across all statuses). The player chooses; approved-only is the default.
+SEARCH_STATUS_APPROVED = "leaderboard"
+SEARCH_STATUS_ALL = "any"
+APPROVED_STATUSES = {"ranked", "approved", "qualified", "loved"}
+# "work in progress" means the map genuinely is not finished, so recommending it
+# wastes the user's rating - excluded even when unranked maps are allowed.
 SKIP_STATUSES = {"wip"}
 FIRST_YEAR = 2008           # nothing meaningful was uploaded before this
 PROBES_PER_GENRE = 2
@@ -95,6 +99,7 @@ class Recommendation:
     preview_url: str = ""  # 30s audio preview mp3
     genre_id: int = 0
     genre_name: str = ""
+    status: str = ""       # ranked / approved / qualified / loved / pending / graveyard
 
     def to_dict(self) -> dict:
         # `pp` is omitted entirely when it was not computed, rather than sent as
@@ -118,6 +123,7 @@ class Recommendation:
             "preview_url": self.preview_url,
             "genre_id": self.genre_id,
             "genre_name": self.genre_name,
+            "status": self.status,
         }
         if self.pp is not None:
             data["pp"] = {str(int(k)): v for k, v in self.pp.items()}
@@ -300,7 +306,7 @@ class Recommender:
     async def _scored_candidates(
         self, username: str, user_id: int, mode: str, acronyms: list[str],
         min_stars: float | None = None, max_stars: float | None = None,
-        need: int = 1,
+        need: int = 1, include_unranked: bool = False,
     ) -> tuple[TasteProfile, list[tuple[float, dict, dict]]]:
         profile = await self.build_profile(user_id, mode, username)
 
@@ -334,7 +340,7 @@ class Recommender:
 
         async def harvest(lo: float, hi: float) -> None:
             for bset, bm in await self._gather_candidates(
-                profile, mode, lo, hi, genres, tolerance
+                profile, mode, lo, hi, genres, tolerance, include_unranked
             ):
                 set_id = int(bset["id"])
                 if set_id in picked or set_id in seen or set_id in profile.played_set_ids:
@@ -381,6 +387,7 @@ class Recommender:
             preview_url=_preview_of(bset),
             genre_id=_genre_of(bset),
             genre_name=genre_name(_genre_of(bset)),
+            status=str(bset.get("status") or ""),
         )
 
     async def recommend(
@@ -405,7 +412,7 @@ class Recommender:
         self, username: str, user_id: int, mode: str,
         mod_string: str | None = None, count: int = 15,
         min_stars: float | None = None, max_stars: float | None = None,
-        with_pp: bool = False,
+        with_pp: bool = False, include_unranked: bool = False,
     ) -> list[Recommendation]:
         """Return a ranked queue of recommendations (for the web player).
 
@@ -416,7 +423,8 @@ class Recommender:
         """
         acronyms, mods_bits = parse_mods(mod_string)
         profile, scored = await self._scored_candidates(
-            username, user_id, mode, acronyms, min_stars, max_stars, need=count
+            username, user_id, mode, acronyms, min_stars, max_stars,
+            need=count, include_unranked=include_unranked,
         )
         picks = scored[:count]
         await self._store.mark_seen_many(
@@ -520,7 +528,8 @@ class Recommender:
         return best_bm
 
     @staticmethod
-    def _probes(genres: list[int], base: dict) -> list[tuple[dict, int | None]]:
+    def _probes(genres: list[int], base: dict,
+                status: str = SEARCH_STATUS_APPROVED) -> list[tuple[dict, int | None]]:
         """Pick which slices of the listing to search this time round.
 
         Each probe is (search params, upload year or None). The first probe for a
@@ -531,7 +540,7 @@ class Recommender:
         years = list(range(FIRST_YEAR, time.gmtime().tm_year + 1))
 
         def slice_for(genre: int | None, first: bool) -> tuple[dict, int | None]:
-            extra = dict(base, s=SEARCH_STATUS, sort=random.choice(SEARCH_SORTS))
+            extra = dict(base, s=status, sort=random.choice(SEARCH_SORTS))
             if genre is not None:
                 extra["g"] = genre
             return extra, (None if first else random.choice(years))
@@ -547,6 +556,7 @@ class Recommender:
     async def _gather_candidates(
         self, profile: TasteProfile, mode: str, low: float, high: float,
         genres: list[int] | None = None, tolerance: float = 0.3,
+        include_unranked: bool = False,
     ) -> list[tuple[dict, dict]]:
         """Collect candidate (beatmapset, difficulty) pairs.
 
@@ -560,6 +570,7 @@ class Recommender:
         if ruleset is not None:
             base["m"] = ruleset
 
+        status = SEARCH_STATUS_ALL if include_unranked else SEARCH_STATUS_APPROVED
         sem = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES)
 
         async def probe(extra: dict, year: int | None) -> list[dict]:
@@ -568,7 +579,8 @@ class Recommender:
                 return await self._search_pages(query, extra)
 
         results = await asyncio.gather(
-            *(probe(extra, year) for extra, year in self._probes(genres or [], base)),
+            *(probe(extra, year)
+              for extra, year in self._probes(genres or [], base, status)),
             return_exceptions=True,
         )
 
@@ -582,7 +594,13 @@ class Recommender:
                 sid = int(bset.get("id") or 0)
                 if not sid or sid in seen_sets:
                     continue
-                if bset.get("status") in SKIP_STATUSES:
+                # Belt and braces: the `s` parameter already narrows this, but a
+                # promise about what the user sees should not depend on one query
+                # parameter behaving.
+                st = bset.get("status")
+                if st in SKIP_STATUSES:
+                    continue
+                if not include_unranked and st not in APPROVED_STATUSES:
                     continue
                 # Widening to every status turns up the occasional set with no
                 # audio; in a music player that is not a recommendation at all.

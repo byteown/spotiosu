@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const DEFAULT_VOLUME = 0.20;          // preview always starts at 20%
 const AUTOPLAY_KEY = "spotiosu.autoplay";  // off unless the user opts in
 const FILTERS_KEY = "spotiosu.filtersOpen";
+const UNRANKED_KEY = "spotiosu.unranked";   // off unless the user opts in
 
 const S = {
   user: null,
@@ -18,14 +19,33 @@ const S = {
   busy: false,
   autoplay: false, // off by default; toggled by the checkbox under the player
   filtersOpen: false,
-  filters: { auto: true, min: 3, max: 6, mods: "" },
+  filters: { auto: true, min: 3, max: 6, mods: "", tiers: new Set(), unranked: false },
 };
 
-try { S.filtersOpen = localStorage.getItem(FILTERS_KEY) === "1"; } catch (_) {}
+/* osu!'s own difficulty spectrum. Naming the bands is the whole point: a player
+   knows what "Insane" means and does not know what 4.0-5.3 means. Selecting
+   several chips spans them, so one control expresses what two handles did. */
+const TIERS = [
+  { id: "easy", min: 0, max: 2.0 },
+  { id: "normal", min: 2.0, max: 2.7 },
+  { id: "hard", min: 2.7, max: 4.0 },
+  { id: "insane", min: 4.0, max: 5.3 },
+  { id: "expert", min: 5.3, max: 6.5 },
+  { id: "expertplus", min: 6.5, max: 10 },
+];
+
+try {
+  S.filtersOpen = localStorage.getItem(FILTERS_KEY) === "1";
+  S.filters.unranked = localStorage.getItem(UNRANKED_KEY) === "1";
+} catch (_) {}
 
 // ============================ boot ============================
 async function init() {
   applyLang(detectLang());
+  // Chip labels come from t(), so they have to be drawn after the language is
+  // resolved - drawing them at module load left them in English.
+  renderTiers();
+  updateRangeLabel();
   showLoginError();
   let state;
   try {
@@ -66,6 +86,7 @@ function showLoginError() {
 // view drew dynamically (genre chips, track badges, charts).
 function switchLang() {
   applyLang(LANG === "ru" ? "en" : "ru");
+  renderTiers();          // chip labels are drawn by JS, not by data-i18n
   updateRangeLabel();
   if (!$("genres-view").classList.contains("hidden")) {
     const chosen = new Set(S.picked);
@@ -192,11 +213,11 @@ function applyFiltersOpen(open) {
 }
 
 function updateFiltersSummary() {
-  const bits = [];
-  bits.push(S.filters.auto
-    ? t("f_auto_value")
-    : `★ ${(+S.filters.min).toFixed(1)}–${(+S.filters.max).toFixed(1)}`);
+  const band = tierBand();
+  const bits = [band ? `★ ${band.min.toFixed(1)}–${band.max.toFixed(1)}` : t("f_auto_value")];
   if (S.filters.mods) bits.push("+" + S.filters.mods);
+  // Worth surfacing while collapsed: it changes what the whole feed is made of.
+  if (S.filters.unranked) bits.push(t("f_unranked_short"));
   $("filters-summary").textContent = "· " + bits.join(" · ");
 }
 
@@ -204,9 +225,11 @@ function updateFiltersSummary() {
 function feedUrl() {
   const p = new URLSearchParams({ count: "10" });
   if (S.filters.mods) p.set("mods", S.filters.mods);
-  if (!S.filters.auto) {
-    p.set("min_stars", S.filters.min);
-    p.set("max_stars", S.filters.max);
+  if (S.filters.unranked) p.set("unranked", "1");
+  const band = tierBand();
+  if (band) {
+    p.set("min_stars", band.min);
+    p.set("max_stars", band.max);
   }
   return "/api/feed?" + p.toString();
 }
@@ -222,12 +245,8 @@ async function fetchBatch() {
 }
 
 function applySuggested(sug) {
-  const lo = Math.max(1, Math.min(10, sug.min));
-  const hi = Math.max(1, Math.min(10, sug.max));
-  S.filters.min = Math.round(lo * 10) / 10;
-  S.filters.max = Math.round(hi * 10) / 10;
-  $("min-stars").value = S.filters.min;
-  $("max-stars").value = S.filters.max;
+  S.filters.min = Math.round(Math.max(0, Math.min(10, sug.min)) * 10) / 10;
+  S.filters.max = Math.round(Math.max(0, Math.min(10, sug.max)) * 10) / 10;
   updateRangeLabel();
 }
 
@@ -333,8 +352,22 @@ function onPlayer() {
   return !$("stage-view").classList.contains("hidden");
 }
 
+/* Whether a map is ranked changes what playing it is worth, so it is stated on
+   the card rather than left to be guessed from the pp figure. */
+function statusBadge(status) {
+  if (!status) return "";
+  const known = ["ranked", "approved", "qualified", "loved", "pending", "wip", "graveyard"];
+  const id = known.includes(status) ? status : "";
+  if (!id) return "";
+  const lesser = id === "graveyard" || id === "pending" || id === "wip";
+  return `<span class="badge status st-${id}${lesser ? " lesser" : ""}">` +
+         `${esc(t("status_" + id))}</span>`;
+}
+
 function renderBadges(rec) {
   const b = [`<span class="badge stars">★ ${rec.stars.toFixed(2)}</span>`];
+  const st = statusBadge(rec.status);
+  if (st) b.push(st);
   if (rec.genre_name) {
     b.push(`<span class="badge genre">${esc(genreLabel(rec.genre_id, rec.genre_name))}</span>`);
   }
@@ -537,38 +570,92 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ============================ filters ============================
+function tierBand() {
+  const picked = TIERS.filter((x) => S.filters.tiers.has(x.id));
+  if (!picked.length) return null;
+  return {
+    min: Math.min(...picked.map((x) => x.min)),
+    max: Math.max(...picked.map((x) => x.max)),
+  };
+}
+
 function updateRangeLabel() {
-  $("range-label").textContent = S.filters.auto
-    ? t("f_auto_value") : `★ ${(+S.filters.min).toFixed(1)} – ${(+S.filters.max).toFixed(1)}`;
+  const band = tierBand();
+  // Even on auto the resolved band is worth showing - "auto" alone tells the
+  // user nothing about what they are going to be served.
+  $("range-label").textContent = band
+    ? `★ ${band.min.toFixed(1)} – ${band.max.toFixed(1)}`
+    : `${t("f_auto_value")} · ★ ${(+S.filters.min).toFixed(1)} – ${(+S.filters.max).toFixed(1)}`;
   updateFiltersSummary();
+}
+
+function renderTiers() {
+  const row = $("tier-row");
+  row.innerHTML = "";
+  const add = (label, on, onclick, title) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "tier-chip" + (on ? " on" : "");
+    b.textContent = label;
+    if (title) b.title = title;
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.onclick = onclick;
+    row.appendChild(b);
+  };
+
+  add(t("f_auto"), S.filters.auto, () => {
+    if (S.filters.auto) return;          // already on; nothing to reload
+    S.filters.tiers.clear();
+    S.filters.auto = true;
+    renderTiers();
+    updateRangeLabel();
+    scheduleApply();
+  });
+
+  for (const tier of TIERS) {
+    const on = S.filters.tiers.has(tier.id);
+    add(t("tier_" + tier.id), on, () => {
+      if (on) S.filters.tiers.delete(tier.id);
+      else S.filters.tiers.add(tier.id);
+      S.filters.auto = S.filters.tiers.size === 0;
+      renderTiers();
+      updateRangeLabel();
+      scheduleApply();
+    }, `★ ${tier.min.toFixed(1)} – ${tier.max.toFixed(1)}`);
+  }
 }
 
 $("filters-toggle").onclick = () => applyFiltersOpen(!S.filtersOpen);
 
-function readSliders() {
-  let lo = parseFloat($("min-stars").value);
-  let hi = parseFloat($("max-stars").value);
-  if (lo > hi) [lo, hi] = [hi, lo];
-  S.filters.min = lo; S.filters.max = hi;
-  updateRangeLabel();
+/* Choosing a filter should change the feed, not arm a button. The delay only
+   exists so that picking two adjacent tiers is one reload instead of two. */
+let applyTimer = null;
+function scheduleApply(delay = 550) {
+  clearTimeout(applyTimer);
+  applyTimer = setTimeout(applyFilters, delay);
 }
 
-for (const id of ["min-stars", "max-stars"]) {
-  $(id).oninput = () => {
-    if ($("auto-diff").checked) { $("auto-diff").checked = false; S.filters.auto = false; }
-    readSliders();
-  };
-}
-$("auto-diff").onchange = (e) => {
-  S.filters.auto = e.target.checked;
-  updateRangeLabel();
-};
-$("apply-filters").onclick = async () => {
+async function applyFilters() {
+  clearTimeout(applyTimer);
   S.filters.mods = $("mods").value.trim();
   S.pending = null;
+  updateFiltersSummary();
   await loadQueue();
   render();
+}
+
+$("unranked").onchange = (e) => {
+  S.filters.unranked = e.target.checked;
+  try { localStorage.setItem(UNRANKED_KEY, S.filters.unranked ? "1" : "0"); } catch (_) {}
+  updateFiltersSummary();
+  scheduleApply(0);
 };
+
+// Typing mods commits on Enter or when the field loses focus, not per keystroke.
+$("mods").onchange = () => scheduleApply(0);
+$("mods").onkeydown = (e) => { if (e.key === "Enter") applyFilters(); };
+
+$("apply-filters").onclick = applyFilters;
 $("reset-history").onclick = async () => {
   await fetch("/api/reset", { method: "POST" });
   S.pending = null;
@@ -741,5 +828,5 @@ function esc(s) {
 
 wireArt();
 wireAudio();
-updateRangeLabel();
-init();
+$("unranked").checked = S.filters.unranked;
+init();   // draws the tier chips once the language is known

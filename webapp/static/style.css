@@ -417,7 +417,10 @@ button, input, a { font: inherit; }
   border-radius: var(--r-md);
   background: rgba(255, 255, 255, 0.03);
 }
-.filter-group { display: flex; flex-direction: column; gap: 8px; }
+.filter-group { display: flex; flex-direction: column; gap: 10px; }
+.filter-wide { flex: 1 1 100%; }
+.filter-head { display: flex; align-items: baseline; gap: 12px; }
+.filter-line { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .filter-label {
   font-size: 0.72rem;
   letter-spacing: 0.14em;
@@ -425,13 +428,33 @@ button, input, a { font: inherit; }
   color: var(--faint);
   font-weight: 700;
 }
-.range-row { display: flex; align-items: center; gap: 12px; }
 .range-label {
-  min-width: 9ch;
-  text-align: center;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.86rem;
+  color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* Difficulty tiers. Named bands replaced a pair of from/to handles: one idea,
+   one control, and the labels are the ones osu! itself uses. */
+.tier-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.tier-chip {
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--dim);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: color 0.16s var(--ease), border-color 0.16s var(--ease),
+              background-color 0.16s var(--ease);
+}
+.tier-chip:hover { color: var(--text); border-color: var(--text); }
+.tier-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 .mods-input {
   background: rgba(255, 255, 255, 0.05);
@@ -444,7 +467,18 @@ button, input, a { font: inherit; }
 }
 .mods-input::placeholder { color: var(--faint); }
 .mods-input:focus { border-color: var(--accent-text); outline: none; }
-.filter-actions { display: flex; gap: 10px; margin-left: auto; }
+/* Its own row with a rule above it: the button commits the whole panel, and
+   sitting beside the mods field made it look like it belonged to that field.
+   Tiers and the checkbox apply on their own, so this is a confirmation, not a
+   gate - it stays for the mods box and for people who want to press something. */
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  flex: 1 1 100%;
+  justify-content: flex-end;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
 
 /* ============================ range inputs ============================ */
 input[type="range"] {
@@ -480,7 +514,6 @@ input[type="range"]::-moz-range-thumb {
   border: none;
 }
 input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.25); }
-#min-stars, #max-stars { width: clamp(90px, 12vw, 150px); }
 
 /* ============================ the stage ============================ */
 #stage-view { display: flex; flex-direction: column; }
@@ -567,6 +600,10 @@ input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.25); }
 }
 .badge.stars { border-color: var(--accent-text); color: var(--accent-text); }
 .badge.genre, .badge.pp { color: var(--text); }
+/* A map without a leaderboard is worth less to play, so it reads quieter. No new
+   hue: rank is carried by weight, which never fights the per-track accent. */
+.badge.status { color: var(--text); }
+.badge.status.lesser { color: var(--faint); border-color: var(--line); }
 .pp-loading { animation: pulse 1.1s ease-in-out infinite; color: var(--faint); }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
