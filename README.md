@@ -1,8 +1,8 @@
-# spotiosu 🎵
+# spotiosu
 
 A personal **osu! beatmap recommendation website**. Sign in with your osu! account
 and get a Spotify-like feed of ranked maps tuned to *your* top plays — with cover
-art, 30-second audio previews, real pp values, and 👍/👎 to refine your taste.
+art, 30-second audio previews, real pp values, and like/dislike to refine your taste.
 
 Built for the "I don't know what to play" moment.
 
@@ -11,11 +11,11 @@ Built for the "I don't know what to play" moment.
 **First visit — a short taste quiz:**
 1. **Sign in with osu!** (OAuth).
 2. **Pick your genres** (at least 2) — Anime, Electronic, Rock, Metal, …
-3. **Rate 10 songs** from those genres in the player: 👍 or 👎. This is what teaches
+3. **Rate 10 songs** from those genres in the player. This is what teaches
    the system your *music* taste.
 
 **After that — the player:** one map at a time, full-screen, with its audio preview
-playing. Rating is **mandatory** — 👍/👎 is how you move to the next track, and every
+playing. Rating is **mandatory** is how you move to the next track, and every
 rating rebuilds your profile, so recommendations shift as you go.
 
 **What drives a recommendation:**
@@ -34,7 +34,6 @@ rating rebuilds your profile, so recommendations shift as you go.
    ```
    http://localhost:8000/auth/callback
    ```
-   > ⚠️ This must match exactly, or sign-in fails with a redirect error.
 4. Copy the **Client ID** and **Client secret** into `config.json`:
    ```json
    { "osu_api": { "client_id": 12345, "client_secret": "SECRET" } }
@@ -59,7 +58,6 @@ First run creates a virtualenv and installs dependencies. Then open
 > `SPOTIOSU_DSN` environment variable.
 
 ## Using it
-- **👍 / 👎** — required to advance; also retrains your recommendations.
 - **Keyboard:** `←` dislike · `→` like · `space` play/pause.
 - **Difficulty filter** — "Match my skill" follows your top plays; uncheck it and drag
   the sliders for an exact ★ range (respected strictly).
